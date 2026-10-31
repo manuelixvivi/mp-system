@@ -81,11 +81,11 @@ export default function OverviewPage() {
               <span>Manual Broadcast</span>
             </Link>
             <Link
-              href="/dashboard/chat-simulator"
+              href="/dashboard/line-bots"
               className="inline-flex items-center space-x-2 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-white/15 backdrop-blur-sm transition-all"
             >
               <Bot className="w-4 h-4" />
-              <span>Buka LINE Bot Simulator</span>
+              <span>Manajemen LINE Bot</span>
             </Link>
           </div>
         </div>

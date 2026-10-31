@@ -145,11 +145,10 @@ Pengguna yang telah menautkan akun LINE di dashboard dapat berinteraksi 1-on-1 d
 
 ## 🧪 Pengujian Fitur di Dashboard
 
-1. **Role Switcher di Topbar:** Ganti peran kapan saja antara Superadmin, Liturgi, dan Logistik untuk menguji navigasi dan hak akses dinamis.
-2. **LINE Chat Simulator:** Buka `/dashboard/chat-simulator` untuk menguji interaksi bot LINE langsung dari browser.
-3. **Audit Studio:** Buka `/dashboard/devotionals/audit` untuk memeriksa perbandingan sumber artikel The Katolik vs LLM Coffee Break with God template, mengedit, dan mengubah status audit.
-4. **Manual Broadcast Studio:** Buka `/dashboard/broadcast/manual` untuk menguji alur siaran manual dengan proteksi konfirmasi dan pencegahan double-submission.
-5. **Cron Test Runner:** Buka `/dashboard/settings/automation` untuk menguji endpoint cron tanpa menunggu jadwal jam sesungguhnya.
+1. **User Management & RBAC:** Buka `/dashboard/users` (khusus Superadmin) untuk mendaftarkan akun baru dengan token aktivasi sekali pakai atau mengubah password.
+2. **Audit Studio:** Buka `/dashboard/devotionals/audit` untuk memeriksa perbandingan sumber artikel The Katolik vs LLM Coffee Break with God template, mengedit, dan mengubah status audit.
+3. **Manual Broadcast Studio:** Buka `/dashboard/broadcast/manual` untuk menguji alur siaran manual dengan proteksi konfirmasi dan pencegahan double-submission.
+4. **Cron Test Runner:** Buka `/dashboard/settings/automation` untuk menguji endpoint cron tanpa menunggu jadwal jam sesungguhnya.
 
 ---
 

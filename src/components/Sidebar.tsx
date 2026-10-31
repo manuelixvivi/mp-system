@@ -17,7 +17,6 @@ import {
   Sliders,
   ShieldCheck,
   FileText,
-  MessageSquare,
   Sparkles,
 } from 'lucide-react';
 
@@ -105,13 +104,6 @@ export default function Sidebar() {
           href: '/dashboard/groups',
           icon: Users,
           roles: ['superadmin'],
-        },
-        {
-          label: 'LINE Chat Simulator',
-          href: '/dashboard/chat-simulator',
-          icon: MessageSquare,
-          badge: '1-on-1 Bot',
-          roles: ['superadmin', 'liturgi', 'logistik'],
         },
       ],
     },
