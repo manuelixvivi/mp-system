@@ -530,18 +530,97 @@ export async function deleteProfile(id: string): Promise<boolean> {
   return db.profiles.length !== initialLen;
 }
 
-export function updateProfile(id: string, updates: Partial<Profile>, newPlainPassword?: string): SafeProfile | null {
+export async function updateProfilePassword(
+  id: string,
+  newPlainPassword: string
+): Promise<SafeProfile | null> {
+  if (!id || !newPlainPassword) return null;
+  const password_hash = bcrypt.hashSync(newPlainPassword, 10);
+  const now = new Date().toISOString();
+
+  // 1. Update in-memory and local database
+  const db = inMemoryDb || loadDatabase();
+  const index = db.profiles.findIndex((p) => p.id === id);
+  let updatedProfile: Profile | null = null;
+
+  if (index !== -1) {
+    db.profiles[index].password_hash = password_hash;
+    db.profiles[index].updated_at = now;
+    saveDatabase(db);
+    updatedProfile = db.profiles[index];
+  }
+
+  // 2. Direct live update in Supabase if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          password_hash,
+          updated_at: now,
+        })
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        if (index !== -1) {
+          db.profiles[index] = data;
+        } else {
+          db.profiles.unshift(data);
+        }
+        saveDatabase(db);
+        return sanitizeProfile(data);
+      }
+    } catch (err) {
+      console.error('Supabase updateProfilePassword error:', err);
+    }
+  }
+
+  return updatedProfile ? sanitizeProfile(updatedProfile) : null;
+}
+
+export async function updateProfile(
+  id: string,
+  updates: Partial<Profile>,
+  newPlainPassword?: string
+): Promise<SafeProfile | null> {
   const db = loadDatabase();
   const index = db.profiles.findIndex((p) => p.id === id);
-  if (index === -1) return null;
 
   if (newPlainPassword) {
     updates.password_hash = bcrypt.hashSync(newPlainPassword, 10);
   }
+  updates.updated_at = new Date().toISOString();
 
-  db.profiles[index] = { ...db.profiles[index], ...updates, updated_at: new Date().toISOString() };
-  saveDatabase(db);
-  return sanitizeProfile(db.profiles[index]);
+  let updatedProfile: Profile | null = null;
+  if (index !== -1) {
+    db.profiles[index] = { ...db.profiles[index], ...updates };
+    saveDatabase(db);
+    updatedProfile = db.profiles[index];
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        if (index !== -1) db.profiles[index] = data;
+        else db.profiles.unshift(data);
+        saveDatabase(db);
+        return sanitizeProfile(data);
+      }
+    } catch (err) {
+      console.error('Supabase updateProfile error:', err);
+    }
+  }
+
+  return updatedProfile ? sanitizeProfile(updatedProfile) : null;
 }
 
 // Line Bot

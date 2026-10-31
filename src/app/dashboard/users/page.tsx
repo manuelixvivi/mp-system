@@ -22,6 +22,8 @@ import {
   RefreshCw,
   MessageSquare,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export default function UserManagementPage() {
@@ -32,6 +34,14 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  // Change Password Modal States
+  const [passwordTargetUser, setPasswordTargetUser] = useState<SafeProfile | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // Form states
   const [name, setName] = useState('');
@@ -194,6 +204,52 @@ export default function UserManagementPage() {
       setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('Password baru harus minimal 6 karakter demi keamanan akun.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Konfirmasi password tidak cocok dengan password baru.');
+      return;
+    }
+
+    if (!passwordTargetUser) return;
+
+    setIsChangingPassword(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change_password',
+          userId: passwordTargetUser.id,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengubah password.');
+      }
+
+      setSuccessMessage(data.message || `Password untuk ${passwordTargetUser.name} berhasil diperbarui.`);
+      setPasswordTargetUser(null);
+      setNewPassword('');
+      setConfirmPassword('');
+      loadUsers();
+      setTimeout(() => setSuccessMessage(null), 6000);
+    } catch (err: any) {
+      setPasswordError(err.message);
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -444,15 +500,31 @@ export default function UserManagementPage() {
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      {u.id !== currentUser?.id && (
+                      <div className="flex items-center justify-end space-x-1">
                         <button
-                          onClick={() => handleDeleteUser(u)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Hapus Akun"
+                          onClick={() => {
+                            setPasswordTargetUser(u);
+                            setNewPassword('');
+                            setConfirmPassword('');
+                            setPasswordError(null);
+                            setShowNewPassword(false);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title={`Ganti Password Akun ${u.name}`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Key className="w-4 h-4" />
                         </button>
-                      )}
+
+                        {u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Hapus Akun"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -669,6 +741,112 @@ export default function UserManagementPage() {
                 Selesai
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal for Any Profile */}
+      {passwordTargetUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 font-sans">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-amber-50 text-amber-700 rounded-lg">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Ganti Password Akun</h3>
+                  <p className="text-xs text-slate-500">Perbarui kredensial untuk akun petugas ini</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPasswordTargetUser(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Target Account Info Card */}
+            <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 text-xs">{passwordTargetUser.name}</span>
+                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">
+                  {passwordTargetUser.role}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-mono">{passwordTargetUser.email}</p>
+            </div>
+
+            {passwordError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+                {passwordError}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePasswordSubmit} className="mt-4 space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Password Baru *</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimal 6 karakter"
+                    className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Konfirmasi Password Baru *</label>
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi password baru"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-xs"
+                />
+              </div>
+
+              <div className="p-2.5 bg-amber-50/60 rounded-lg border border-amber-200/60 text-[11px] text-amber-900 leading-relaxed">
+                Password akan di-hash secara aman menggunakan <strong>bcrypt</strong> dan langsung disinkronkan ke Supabase.
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isChangingPassword}
+                  onClick={() => setPasswordTargetUser(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-sm transition-all disabled:opacity-50 flex items-center space-x-1.5"
+                >
+                  {isChangingPassword ? (
+                    <span>Menyimpan...</span>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Simpan Password Baru</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

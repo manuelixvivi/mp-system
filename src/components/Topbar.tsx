@@ -13,6 +13,11 @@ import {
   BookOpen,
   Package,
   LogOut,
+  Key,
+  Lock,
+  Eye,
+  EyeOff,
+  Check,
 } from 'lucide-react';
 
 export default function Topbar() {
@@ -20,6 +25,61 @@ export default function Topbar() {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Self Password Change Modal States
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [myNewPassword, setMyNewPassword] = useState('');
+  const [myConfirmPassword, setMyConfirmPassword] = useState('');
+  const [showMyPassword, setShowMyPassword] = useState(false);
+  const [isSavingMyPassword, setIsSavingMyPassword] = useState(false);
+  const [myPasswordError, setMyPasswordError] = useState<string | null>(null);
+  const [myPasswordSuccess, setMyPasswordSuccess] = useState<string | null>(null);
+
+  const handleSaveMyPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMyPasswordError(null);
+    setMyPasswordSuccess(null);
+
+    if (!myNewPassword || myNewPassword.length < 6) {
+      setMyPasswordError('Password baru harus minimal 6 karakter.');
+      return;
+    }
+
+    if (myNewPassword !== myConfirmPassword) {
+      setMyPasswordError('Konfirmasi password tidak cocok.');
+      return;
+    }
+
+    if (!currentUser?.id) return;
+
+    setIsSavingMyPassword(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change_password',
+          userId: currentUser.id,
+          newPassword: myNewPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengubah password.');
+      }
+
+      setMyPasswordSuccess('Password akun Anda berhasil diperbarui!');
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setMyPasswordSuccess(null);
+      }, 2000);
+    } catch (err: any) {
+      setMyPasswordError(err.message);
+    } finally {
+      setIsSavingMyPassword(false);
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -143,17 +203,128 @@ export default function Topbar() {
             </span>
           </div>
 
+          {/* Change Own Password Button */}
+          {currentUser?.id && (
+            <button
+              onClick={() => {
+                setMyNewPassword('');
+                setMyConfirmPassword('');
+                setMyPasswordError(null);
+                setMyPasswordSuccess(null);
+                setShowMyPassword(false);
+                setShowPasswordModal(true);
+              }}
+              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors ml-1"
+              title="Ganti Password Akun Saya"
+            >
+              <Key className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Logout Button */}
           <button
             onClick={handleLogoutClick}
             disabled={loggingOut}
-            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Keluar (Logout)"
           >
             <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
+
+      {/* Change Password Modal for Current User */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 font-sans">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Ganti Password Saya</h3>
+                  <p className="text-[11px] text-slate-500 font-mono truncate max-w-[200px]">
+                    {currentUser?.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-base"
+              >
+                &times;
+              </button>
+            </div>
+
+            {myPasswordSuccess && (
+              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold flex items-center space-x-2">
+                <Check className="w-4 h-4 text-emerald-600" />
+                <span>{myPasswordSuccess}</span>
+              </div>
+            )}
+
+            {myPasswordError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+                {myPasswordError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveMyPassword} className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Password Baru *</label>
+                <div className="relative">
+                  <input
+                    type={showMyPassword ? 'text' : 'password'}
+                    required
+                    value={myNewPassword}
+                    onChange={(e) => setMyNewPassword(e.target.value)}
+                    placeholder="Minimal 6 karakter"
+                    className="w-full pl-3 pr-9 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMyPassword(!showMyPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showMyPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Konfirmasi Password *</label>
+                <input
+                  type={showMyPassword ? 'text' : 'password'}
+                  required
+                  value={myConfirmPassword}
+                  onChange={(e) => setMyConfirmPassword(e.target.value)}
+                  placeholder="Ulangi password baru"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isSavingMyPassword}
+                  onClick={() => setShowPasswordModal(false)}
+                  className="px-3.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingMyPassword}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-sm transition-all disabled:opacity-50"
+                >
+                  {isSavingMyPassword ? 'Menyimpan...' : 'Perbarui Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

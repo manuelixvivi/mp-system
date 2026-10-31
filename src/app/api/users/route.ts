@@ -5,22 +5,31 @@ import {
   deleteProfile,
   getProfileByEmail,
   regenerateProfileToken,
+  updateProfilePassword,
   addActivityLog,
 } from '@/lib/db/store';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-async function getAuthenticatedSuperadmin(req: NextRequest) {
+async function getAuthenticatedUser(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
   const sessionUser = await verifySessionToken(token);
   if (!sessionUser || !sessionUser.email) return null;
 
-  // Confirm directly against database profile
   const dbUser = await getProfileByEmail(sessionUser.email);
-  if (!dbUser || !dbUser.is_active || dbUser.role !== 'superadmin') {
+  if (!dbUser || !dbUser.is_active) {
+    return null;
+  }
+
+  return dbUser;
+}
+
+async function getAuthenticatedSuperadmin(req: NextRequest) {
+  const dbUser = await getAuthenticatedUser(req);
+  if (!dbUser || dbUser.role !== 'superadmin') {
     return null;
   }
 
@@ -123,27 +132,85 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const superadmin = await getAuthenticatedSuperadmin(req);
-  if (!superadmin) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
     return NextResponse.json(
-      { error: 'Akses ditolak: Hanya Superadmin yang berhak memperbarui token.' },
-      { status: 403 }
+      { error: 'Akses ditolak: Anda belum terautentikasi.' },
+      { status: 401 }
     );
   }
 
   try {
     const body = await req.json();
-    const { userId, action } = body;
+    const { userId, action, newPassword } = body;
 
+    // 1. Action: change_password (Superadmin can change for all profiles, users can change their own)
+    if (action === 'change_password') {
+      if (!userId || !newPassword) {
+        return NextResponse.json(
+          { error: 'User ID dan password baru wajib diisi.' },
+          { status: 400 }
+        );
+      }
+
+      if (authUser.role !== 'superadmin' && authUser.id !== userId) {
+        return NextResponse.json(
+          { error: 'Akses ditolak: Hanya Superadmin yang berhak mengganti password profil lain.' },
+          { status: 403 }
+        );
+      }
+
+      if (newPassword.length < 6) {
+        return NextResponse.json(
+          { error: 'Password baru harus minimal 6 karakter demi keamanan akun.' },
+          { status: 400 }
+        );
+      }
+
+      const updated = await updateProfilePassword(userId, newPassword);
+      if (!updated) {
+        return NextResponse.json({ error: 'Akun tidak ditemukan.' }, { status: 404 });
+      }
+
+      addActivityLog({
+        user_id: authUser.id,
+        user_name: authUser.name,
+        actor_type: 'user',
+        action: 'user_password_changed',
+        entity_type: 'profile',
+        entity_id: userId,
+        details: {
+          target_user: updated.name,
+          target_email: updated.email,
+          changed_by: authUser.email,
+          is_self: authUser.id === userId,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Password akun ${updated.name} (${updated.email}) berhasil diperbarui!`,
+        user: updated,
+      });
+    }
+
+    // 2. Action: regenerate_token (Superadmin only)
     if (action === 'regenerate_token' && userId) {
+      if (authUser.role !== 'superadmin') {
+        return NextResponse.json(
+          { error: 'Akses ditolak: Hanya Superadmin yang berhak memperbarui token.' },
+          { status: 403 }
+        );
+      }
+
       const newToken = await regenerateProfileToken(userId);
       if (!newToken) {
         return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 });
       }
 
       addActivityLog({
-        user_id: superadmin.id,
-        user_name: superadmin.name,
+        user_id: authUser.id,
+        user_name: authUser.name,
         actor_type: 'user',
         action: 'registration_token_regenerated',
         entity_type: 'profile',
