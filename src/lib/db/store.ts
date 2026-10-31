@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { supabase, isSupabaseConfigured } from './supabase';
 import {
   Profile,
   SafeProfile,
@@ -49,6 +51,42 @@ const DB_FILE_PATH = process.env.VERCEL
 
 // In-memory cache
 let inMemoryDb: DatabaseData | null = null;
+let isSyncingSupabase = false;
+
+export async function syncFromSupabase(): Promise<void> {
+  if (!isSupabaseConfigured || !supabase || isSyncingSupabase) return;
+  isSyncingSupabase = true;
+
+  try {
+    const [profRes, grpRes, memRes] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('line_groups').select('*'),
+      supabase.from('members').select('*'),
+    ]);
+
+    const db = inMemoryDb || loadDatabase();
+    if (profRes.data && profRes.data.length > 0) {
+      const supaProfiles = profRes.data as Profile[];
+      const mergedMap = new Map<string, Profile>();
+      supaProfiles.forEach((p) => mergedMap.set(p.id, p));
+      db.profiles.forEach((p) => {
+        if (!mergedMap.has(p.id)) mergedMap.set(p.id, p);
+      });
+      db.profiles = Array.from(mergedMap.values());
+    }
+    if (grpRes.data && grpRes.data.length > 0) {
+      db.line_groups = grpRes.data as LineGroup[];
+    }
+    if (memRes.data && memRes.data.length > 0) {
+      db.members = memRes.data as Member[];
+    }
+    saveDatabase(db);
+  } catch (err) {
+    console.error('Failed syncing from Supabase:', err);
+  } finally {
+    isSyncingSupabase = false;
+  }
+}
 
 function loadDatabase(): DatabaseData {
   if (inMemoryDb) {
@@ -59,6 +97,10 @@ function loadDatabase(): DatabaseData {
     if (fs.existsSync(DB_FILE_PATH)) {
       const content = fs.readFileSync(DB_FILE_PATH, 'utf-8');
       inMemoryDb = JSON.parse(content);
+      // Trigger background sync if Supabase is connected
+      if (isSupabaseConfigured && supabase) {
+        syncFromSupabase().catch(() => {});
+      }
       return inMemoryDb!;
     }
   } catch (err) {
@@ -81,6 +123,11 @@ function loadDatabase(): DatabaseData {
   };
 
   saveDatabase(inMemoryDb);
+
+  if (isSupabaseConfigured && supabase) {
+    syncFromSupabase().catch(() => {});
+  }
+
   return inMemoryDb;
 }
 
@@ -130,9 +177,39 @@ export async function validateUserPassword(
 ): Promise<SafeProfile | null> {
   if (!email || !plainPassword) return null;
 
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // 1. Direct Supabase Query if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: user, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!error && user && user.password_hash) {
+        const isValid = await bcrypt.compare(plainPassword, user.password_hash);
+        if (isValid) {
+          const db = inMemoryDb || loadDatabase();
+          const idx = db.profiles.findIndex((p) => p.email.toLowerCase() === normalizedEmail);
+          if (idx !== -1) db.profiles[idx] = user;
+          else db.profiles.push(user);
+          saveDatabase(db);
+          return sanitizeProfile(user);
+        }
+        return null;
+      }
+    } catch (err) {
+      console.error('Supabase validateUserPassword error:', err);
+    }
+  }
+
+  // 2. Fallback to local DB
   const db = loadDatabase();
   const user = db.profiles.find(
-    (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active
+    (p) => p.email.toLowerCase() === normalizedEmail && p.is_active
   );
 
   if (!user || !user.password_hash) {
@@ -169,17 +246,72 @@ export function generateRegistrationToken(name: string): string {
   return token;
 }
 
-export function activateProfileByToken(
+export async function activateProfileByToken(
   token: string,
   lineUserId: string
-): { success: boolean; profile?: SafeProfile; error?: string } {
+): Promise<{ success: boolean; profile?: SafeProfile; error?: string }> {
   if (!token || !lineUserId) {
     return { success: false, error: 'Token registrasi dan LINE User ID wajib diisi.' };
   }
 
-  const db = loadDatabase();
   const cleanToken = token.trim().toUpperCase();
 
+  // 1. If Supabase is connected, check and update Supabase directly
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: supaProf, error: findErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('registration_token', cleanToken)
+        .maybeSingle();
+
+      if (!findErr && supaProf) {
+        // Unlink if another profile currently holds this line user ID
+        await supabase
+          .from('profiles')
+          .update({ line_user_id: null })
+          .eq('line_user_id', lineUserId);
+
+        const { data: updated, error: updErr } = await supabase
+          .from('profiles')
+          .update({
+            line_user_id: lineUserId,
+            is_active: true,
+            registration_token: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', supaProf.id)
+          .select()
+          .single();
+
+        if (!updErr && updated) {
+          const db = inMemoryDb || loadDatabase();
+          const idx = db.profiles.findIndex((p) => p.id === supaProf.id);
+          if (idx !== -1) db.profiles[idx] = updated;
+          else db.profiles.push(updated);
+          saveDatabase(db);
+
+          const safe = sanitizeProfile(updated);
+          addActivityLog({
+            user_id: safe.id,
+            user_name: safe.name,
+            actor_type: 'user',
+            action: 'line_account_activated',
+            entity_type: 'profile',
+            entity_id: safe.id,
+            details: { token_used: cleanToken, line_user_id: lineUserId },
+          });
+
+          return { success: true, profile: safe };
+        }
+      }
+    } catch (err) {
+      console.error('Supabase activateProfileByToken error:', err);
+    }
+  }
+
+  // 2. Fallback to local DB
+  const db = loadDatabase();
   const profileIdx = db.profiles.findIndex(
     (p) => p.registration_token?.toUpperCase() === cleanToken
   );
@@ -241,6 +373,18 @@ export function regenerateProfileToken(profileId: string): string | null {
   db.profiles[idx].registration_token = newToken;
   db.profiles[idx].updated_at = new Date().toISOString();
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('profiles')
+      .update({
+        registration_token: newToken,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profileId)
+      .then();
+  }
+
   return newToken;
 }
 
@@ -274,12 +418,22 @@ export function createProfile(
     password_hash: passwordHash,
     registration_token: regToken,
     is_active: isActive,
-    id: `prof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     created_at: new Date().toISOString(),
   };
 
   db.profiles.push(newProfile);
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('profiles')
+      .insert([newProfile])
+      .then(({ error }) => {
+        if (error) console.error('Supabase profile insertion error:', error.message);
+      });
+  }
+
   return sanitizeProfile(newProfile);
 }
 
@@ -289,6 +443,9 @@ export function deleteProfile(id: string): boolean {
   db.profiles = db.profiles.filter((p) => p.id !== id);
   if (db.profiles.length !== initialLen) {
     saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('profiles').delete().eq('id', id).then();
+    }
     return true;
   }
   return false;
@@ -344,6 +501,9 @@ export function deleteLineGroup(id: string): boolean {
   db.line_groups = db.line_groups.filter((g) => g.id !== id && g.group_id !== id);
   if (db.line_groups.length !== initialLen) {
     saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('line_groups').delete().eq('id', id).then();
+    }
     return true;
   }
   return false;
@@ -353,11 +513,14 @@ export function createLineGroup(group: Omit<LineGroup, 'id' | 'created_at'>): Li
   const db = loadDatabase();
   const newGroup: LineGroup = {
     ...group,
-    id: `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     created_at: new Date().toISOString(),
   };
   db.line_groups.push(newGroup);
   saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase.from('line_groups').insert([newGroup]).then();
+  }
   return newGroup;
 }
 
@@ -374,11 +537,14 @@ export function createMember(member: Omit<Member, 'id' | 'created_at'>): Member 
   const db = loadDatabase();
   const newMember: Member = {
     ...member,
-    id: `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     created_at: new Date().toISOString(),
   };
   db.members.push(newMember);
   saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase.from('members').insert([newMember]).then();
+  }
   return newMember;
 }
 
@@ -388,6 +554,9 @@ export function updateMember(id: string, updates: Partial<Member>): Member | nul
   if (idx === -1) return null;
   db.members[idx] = { ...db.members[idx], ...updates, updated_at: new Date().toISOString() };
   saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase.from('members').update(updates).eq('id', id).then();
+  }
   return db.members[idx];
 }
 
@@ -397,6 +566,9 @@ export function deleteMember(id: string): boolean {
   db.members = db.members.filter((m) => m.id !== id);
   if (db.members.length !== initLen) {
     saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('members').delete().eq('id', id).then();
+    }
     return true;
   }
   return false;
@@ -498,7 +670,7 @@ export function addDelivery(delivery: Omit<BroadcastDelivery, 'id' | 'delivered_
   const db = loadDatabase();
   const newDelivery: BroadcastDelivery = {
     ...delivery,
-    id: `del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     delivered_at: new Date().toISOString(),
   };
   db.deliveries.unshift(newDelivery);
@@ -515,7 +687,7 @@ export function addActivityLog(log: Omit<ActivityLog, 'id' | 'created_at'>): Act
   const db = loadDatabase();
   const newLog: ActivityLog = {
     ...log,
-    id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     created_at: new Date().toISOString(),
   };
   db.logs.unshift(newLog);
@@ -524,6 +696,20 @@ export function addActivityLog(log: Omit<ActivityLog, 'id' | 'created_at'>): Act
     db.logs = db.logs.slice(0, 200);
   }
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    supabase.from('activity_logs').insert([{
+      id: newLog.id,
+      user_id: (log.user_id && log.user_id.length > 20) ? log.user_id : null,
+      actor_type: log.actor_type,
+      action: log.action,
+      entity_type: log.entity_type,
+      entity_id: log.entity_id || null,
+      details: log.details || null,
+      created_at: newLog.created_at,
+    }]).then();
+  }
+
   return newLog;
 }
 
@@ -536,7 +722,7 @@ export function addNotification(notif: Omit<NotificationItem, 'id' | 'created_at
   const db = loadDatabase();
   const newNotif: NotificationItem = {
     ...notif,
-    id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: randomUUID(),
     is_read: false,
     created_at: new Date().toISOString(),
   };

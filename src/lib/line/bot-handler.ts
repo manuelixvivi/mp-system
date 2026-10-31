@@ -62,7 +62,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
       return { status: 'invalid_token_format', text: reply };
     }
 
-    const activation = activateProfileByToken(token, lineUserId);
+    const activation = await activateProfileByToken(token, lineUserId);
     if (!activation.success || !activation.profile) {
       const reply = `⚠️ GAGAL AKTIVASI AKUN\n\n${activation.error || 'Token tidak valid.'}\n\nPastikan format token sudah sesuai dengan yang diberikan oleh Superadmin (contoh: ABEL123). Jika token hangus, silakan minta Superadmin untuk membuat token baru.`;
       if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
