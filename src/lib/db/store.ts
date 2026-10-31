@@ -880,8 +880,22 @@ export function updateAutomationSettings(updates: Partial<AutomationSettings>): 
   return db.settings;
 }
 
-// Deliveries
-export function getDeliveries(): BroadcastDelivery[] {
+// Deliveries (Broadcast History)
+export async function getDeliveries(): Promise<BroadcastDelivery[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('broadcast_deliveries')
+        .select('*')
+        .order('delivered_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        return data as BroadcastDelivery[];
+      }
+    } catch (err) {
+      console.warn('Supabase getDeliveries warning:', err);
+    }
+  }
   return loadDatabase().deliveries;
 }
 
@@ -894,11 +908,75 @@ export function addDelivery(delivery: Omit<BroadcastDelivery, 'id' | 'delivered_
   };
   db.deliveries.unshift(newDelivery);
   saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase.from('broadcast_deliveries').insert([newDelivery]).then();
+  }
   return newDelivery;
 }
 
+export function deleteDelivery(id: string): boolean {
+  const db = loadDatabase();
+  const initLen = db.deliveries.length;
+  db.deliveries = db.deliveries.filter((d) => d.id !== id);
+  if (db.deliveries.length !== initLen) {
+    saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('broadcast_deliveries').delete().eq('id', id).then();
+    }
+    return true;
+  }
+  return false;
+}
+
+export function deleteDeliveriesBulk(ids: string[]): { success: boolean; count: number; deletedIds: string[] } {
+  if (!ids || ids.length === 0) return { success: true, count: 0, deletedIds: [] };
+  const db = loadDatabase();
+  const idSet = new Set(ids);
+  const initLen = db.deliveries.length;
+  const deleted = db.deliveries.filter((d) => idSet.has(d.id));
+  db.deliveries = db.deliveries.filter((d) => !idSet.has(d.id));
+  const count = initLen - db.deliveries.length;
+  if (count > 0) {
+    saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('broadcast_deliveries').delete().in('id', ids).then();
+    }
+  }
+  return { success: true, count, deletedIds: deleted.map((d) => d.id) };
+}
+
+export function clearAllDeliveries(): { success: boolean; count: number } {
+  const db = loadDatabase();
+  const count = db.deliveries.length;
+  db.deliveries = [];
+  saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('broadcast_deliveries')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000')
+      .then();
+  }
+  return { success: true, count };
+}
+
 // Activity Logs
-export function getActivityLogs(): ActivityLog[] {
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (!error && data && data.length > 0) {
+        return data as ActivityLog[];
+      }
+    } catch (err) {
+      console.warn('Supabase getActivityLogs warning:', err);
+    }
+  }
   return loadDatabase().logs;
 }
 
@@ -930,6 +1008,52 @@ export function addActivityLog(log: Omit<ActivityLog, 'id' | 'created_at'>): Act
   }
 
   return newLog;
+}
+
+export function deleteActivityLog(id: string): boolean {
+  const db = loadDatabase();
+  const initLen = db.logs.length;
+  db.logs = db.logs.filter((l) => l.id !== id);
+  if (db.logs.length !== initLen) {
+    saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('activity_logs').delete().eq('id', id).then();
+    }
+    return true;
+  }
+  return false;
+}
+
+export function deleteActivityLogsBulk(ids: string[]): { success: boolean; count: number; deletedIds: string[] } {
+  if (!ids || ids.length === 0) return { success: true, count: 0, deletedIds: [] };
+  const db = loadDatabase();
+  const idSet = new Set(ids);
+  const initLen = db.logs.length;
+  const deleted = db.logs.filter((l) => idSet.has(l.id));
+  db.logs = db.logs.filter((l) => !idSet.has(l.id));
+  const count = initLen - db.logs.length;
+  if (count > 0) {
+    saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('activity_logs').delete().in('id', ids).then();
+    }
+  }
+  return { success: true, count, deletedIds: deleted.map((l) => l.id) };
+}
+
+export function clearAllActivityLogs(): { success: boolean; count: number } {
+  const db = loadDatabase();
+  const count = db.logs.length;
+  db.logs = [];
+  saveDatabase(db);
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('activity_logs')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000')
+      .then();
+  }
+  return { success: true, count };
 }
 
 // Notifications
