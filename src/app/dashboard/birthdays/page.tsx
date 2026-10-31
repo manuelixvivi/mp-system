@@ -11,7 +11,6 @@ import {
   Filter,
   CheckCircle,
   AlertCircle,
-  Edit2,
   Trash2,
   Calendar,
   Users,
@@ -20,11 +19,15 @@ import {
   Layers,
   Plane,
   Clock,
-  Sparkles,
-  ShieldCheck,
   Eye,
   Check,
   Copy,
+  CheckSquare,
+  Square,
+  GraduationCap,
+  Sparkles,
+  BookOpen,
+  X,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -59,27 +62,60 @@ const MONTH_SHORT = [
   'DES',
 ];
 
+// Instagram SVG Icon Component
+function InstagramIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
+
 export default function BirthdayManagementPage() {
   const { currentRole } = useRole();
   const [members, setMembers] = useState<Member[]>([]);
   const [groups, setGroups] = useState<LineGroup[]>([]);
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<number>(0);
+  const [selectedEntryYear, setSelectedEntryYear] = useState<number | 'all'>('all');
   const [activeBay, setActiveBay] = useState<'all' | 'today' | 'upcoming' | 'alert'>('all');
   const [viewMode, setViewMode] = useState<'fps' | 'table'>('fps');
   const [loading, setLoading] = useState(true);
+
+  // Multi-Selection State for bulk operations
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Modal inspection & Add states
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedStrip, setSelectedStrip] = useState<Member | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // New Member Form
+  // New Member Form States
   const [fullName, setFullName] = useState('');
+  const [baptismalName, setBaptismalName] = useState('');
   const [birthDate, setBirthDate] = useState('1');
   const [birthMonth, setBirthMonth] = useState('1');
   const [birthYear, setBirthYear] = useState('');
+  const [classOrigin, setClassOrigin] = useState('');
+  const [entryYear, setEntryYear] = useState(new Date().getFullYear().toString());
   const [lineUserId, setLineUserId] = useState('');
+  const [instagramAccount, setInstagramAccount] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -89,11 +125,11 @@ export default function BirthdayManagementPage() {
       ]);
       setMembers(memRes.members || []);
       setGroups(grpRes.groups || []);
-      if (grpRes.groups?.length > 0) {
+      if (grpRes.groups?.length > 0 && !selectedGroup) {
         setSelectedGroup(grpRes.groups[0].id);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Failed loading member/group data:', e);
     } finally {
       setLoading(false);
     }
@@ -103,52 +139,61 @@ export default function BirthdayManagementPage() {
     loadData();
   }, []);
 
+  const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
+    setActionMessage({ text, type });
+    setTimeout(() => setActionMessage(null), 4000);
+  };
+
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !birthDate || !birthMonth) return;
+    if (!fullName || !birthDate || !birthMonth) {
+      alert('Nama lengkap, tanggal lahir, dan bulan lahir wajib diisi.');
+      return;
+    }
 
+    setIsSubmitting(true);
     try {
       const res = await fetch('/api/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: fullName,
+          baptismal_name: baptismalName,
           birth_date: Number(birthDate),
           birth_month: Number(birthMonth),
           birth_year: birthYear ? Number(birthYear) : undefined,
+          class_origin: classOrigin,
+          entry_year: entryYear ? Number(entryYear) : undefined,
           line_user_id: lineUserId,
+          instagram_account: instagramAccount,
           assigned_groups: selectedGroup ? [selectedGroup] : [],
           notes,
         }),
       });
 
+      const data = await res.json();
       if (res.ok) {
         setShowAddModal(false);
+        // Reset form
         setFullName('');
+        setBaptismalName('');
+        setClassOrigin('');
+        setEntryYear(new Date().getFullYear().toString());
         setLineUserId('');
+        setInstagramAccount('');
         setNotes('');
+        setBirthYear('');
+        showNotification('Data anggota ulang tahun berhasil ditambahkan!');
         loadData();
+      } else {
+        alert(data.error || 'Gagal menambahkan anggota.');
       }
     } catch (err) {
       console.error(err);
+      alert('Terjadi kesalahan jaringan.');
+    } finally {
+      setIsSubmitting(false);
     }
-  };
-
-  const handleDeleteMember = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus anggota ini dari strip bay?')) return;
-    try {
-      await fetch(`/api/members?id=${id}`, { method: 'DELETE' });
-      if (selectedStrip?.id === id) setSelectedStrip(null);
-      loadData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
   };
 
   // Helper calculations for Flight Progress Strips
@@ -161,7 +206,6 @@ export default function BirthdayManagementPage() {
     const isToday = member.birth_date === todayDate && member.birth_month === todayMonth;
     const hasLineId = Boolean(member.line_user_id && member.line_user_id.trim().length > 0);
 
-    // Calculate days remaining
     let nextBday = new Date(currentYear, member.birth_month - 1, member.birth_date);
     if (nextBday < new Date(currentYear, todayMonth - 1, todayDate)) {
       nextBday = new Date(currentYear + 1, member.birth_month - 1, member.birth_date);
@@ -169,7 +213,6 @@ export default function BirthdayManagementPage() {
     const diffTime = nextBday.getTime() - new Date(currentYear, todayMonth - 1, todayDate).getTime();
     const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const isUpcoming = daysRemaining > 0 && daysRemaining <= 7;
-
     const age = member.birth_year ? currentYear - member.birth_year : null;
 
     return {
@@ -181,42 +224,155 @@ export default function BirthdayManagementPage() {
     };
   };
 
-  // Filter members based on search, month, and Bay racks
+  // Dynamically extract available entry years from loaded members
+  const availableEntryYears = Array.from(
+    new Set(
+      members
+        .map((m) => m.entry_year)
+        .filter((y): y is number => typeof y === 'number' && !isNaN(y) && y > 1990)
+    )
+  ).sort((a, b) => b - a);
+
+  // Filter members based on search, month, entry year, and bay tabs
   const filteredMembers = members.filter((m) => {
+    const q = search.toLowerCase().trim();
     const matchSearch =
-      m.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      (m.line_user_id || '').toLowerCase().includes(search.toLowerCase());
+      !q ||
+      m.full_name.toLowerCase().includes(q) ||
+      (m.baptismal_name || '').toLowerCase().includes(q) ||
+      (m.class_origin || '').toLowerCase().includes(q) ||
+      (m.instagram_account || '').toLowerCase().includes(q) ||
+      (m.line_user_id || '').toLowerCase().includes(q);
+
     const matchMonth = selectedMonth === 0 || m.birth_month === selectedMonth;
+    const matchEntryYear = selectedEntryYear === 'all' || m.entry_year === selectedEntryYear;
 
     const { isToday, isUpcoming, hasLineId } = getMemberStatus(m);
-
     let matchBay = true;
     if (activeBay === 'today') matchBay = isToday;
     else if (activeBay === 'upcoming') matchBay = isUpcoming;
     else if (activeBay === 'alert') matchBay = !hasLineId;
 
-    return matchSearch && matchMonth && matchBay;
+    return matchSearch && matchMonth && matchBay && matchEntryYear;
   });
+
+  // Multi-selection Handlers
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    const currentFilteredIds = filteredMembers.map((m) => m.id);
+    const areAllFilteredSelected =
+      currentFilteredIds.length > 0 &&
+      currentFilteredIds.every((id) => selectedIds.includes(id));
+
+    if (areAllFilteredSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !currentFilteredIds.includes(id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentFilteredIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  // Trigger deletion for selected members (enforces "harus diselect dulu")
+  const handleOpenDeleteConfirm = () => {
+    if (selectedIds.length === 0) {
+      alert('Pilih terlebih dahulu anggota yang ingin dihapus dengan mencentang kotak seleksi.');
+      return;
+    }
+    setShowDeleteModal(true);
+  };
+
+  const handleQuickSelectAndDelete = (id: string) => {
+    setSelectedIds([id]);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (selectedIds.length === 0) return;
+    setIsDeleting(true);
+
+    try {
+      const res = await fetch('/api/members', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        showNotification(data.message || `${selectedIds.length} data anggota berhasil dihapus.`);
+        setSelectedIds([]);
+        setShowDeleteModal(false);
+        if (selectedStrip && selectedIds.includes(selectedStrip.id)) {
+          setSelectedStrip(null);
+        }
+        loadData();
+      } else {
+        alert(data.error || 'Gagal menghapus data.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan koneksi saat menghapus.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // Bay counts
   const countToday = members.filter((m) => getMemberStatus(m).isToday).length;
   const countUpcoming = members.filter((m) => getMemberStatus(m).isUpcoming).length;
   const countAlert = members.filter((m) => !getMemberStatus(m).hasLineId).length;
 
+  const isAllFilteredSelected =
+    filteredMembers.length > 0 &&
+    filteredMembers.every((m) => selectedIds.includes(m.id));
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto font-sans">
+      {/* Toast Notification */}
+      {actionMessage && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-semibold shadow-md animate-in slide-in-from-top-2 ${
+            actionMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+              : 'bg-red-50 text-red-800 border-red-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <span>{actionMessage.text}</span>
+          </div>
+          <button onClick={() => setActionMessage(null)} className="text-slate-400 hover:text-slate-700">
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <div className="flex items-center space-x-2 text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full font-medium inline-flex mb-2">
             <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-            <span>Birthday Progress Board • Flight Progress Strip (EFPS) Interface</span>
+            <span>Birthday Progress Board • Electronic Flight Progress Strip (EFPS)</span>
           </div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Daftar Ulang Tahun — Flight Progress Strip
+            Daftar Ulang Tahun Anggota
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tampilan terpusat dengan gaya *Electronic Flight Progress Strip* (EFPS) untuk memantau status antrean ulang tahun, verifikasi squawk LINE ID, dan jadwal siaran 07:00 WIB.
+            Kelola data anggota (tanggal lahir, nama lengkap, nama baptis, asal kelas, tahun masuk, akun LINE, dan akun Instagram) dengan sistem seleksi & filter terintegrasi.
           </p>
         </div>
 
@@ -324,26 +480,28 @@ export default function BirthdayManagementPage() {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-sans">
-        <div className="flex items-center space-x-3 flex-1">
-          <div className="relative flex-1 max-w-md">
+      {/* Filter and Search Bar with ENTRY YEAR and BULK ACTIONS */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1">
+          {/* Search box */}
+          <div className="relative min-w-[220px] flex-1 max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Cari Callsign, Nama, atau LINE User ID..."
+              placeholder="Cari Nama, Baptis, Kelas, LINE, IG..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
             />
           </div>
 
+          {/* Filter Bulan */}
           <div className="flex items-center space-x-1.5">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none font-medium"
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none font-medium bg-white text-slate-700"
             >
               {MONTH_NAMES.map((m, idx) => (
                 <option key={idx} value={idx}>
@@ -352,43 +510,118 @@ export default function BirthdayManagementPage() {
               ))}
             </select>
           </div>
+
+          {/* Filter Tahun Masuk (Entry Year) */}
+          <div className="flex items-center space-x-1.5">
+            <GraduationCap className="w-3.5 h-3.5 text-blue-500" />
+            <select
+              value={selectedEntryYear}
+              onChange={(e) =>
+                setSelectedEntryYear(e.target.value === 'all' ? 'all' : Number(e.target.value))
+              }
+              className="text-xs border border-blue-200 bg-blue-50/50 rounded-lg px-2.5 py-2 focus:outline-none font-semibold text-blue-900"
+            >
+              <option value="all">Semua Tahun Masuk</option>
+              {availableEntryYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  Tahun Masuk {yr}
+                </option>
+              ))}
+              {/* Fallback presets if data is sparse */}
+              {!availableEntryYears.includes(2026) && <option value="2026">Tahun Masuk 2026</option>}
+              {!availableEntryYears.includes(2025) && <option value="2025">Tahun Masuk 2025</option>}
+              {!availableEntryYears.includes(2024) && <option value="2024">Tahun Masuk 2024</option>}
+              {!availableEntryYears.includes(2023) && <option value="2023">Tahun Masuk 2023</option>}
+              {!availableEntryYears.includes(2022) && <option value="2022">Tahun Masuk 2022</option>}
+            </select>
+          </div>
         </div>
 
-        <div className="text-xs text-slate-500 font-mono">
-          STATUS: <strong className="text-slate-800">{filteredMembers.length} STRIPS ON SCREEN</strong>
+        {/* Master Select & Status Counter */}
+        <div className="flex items-center space-x-3 text-xs font-mono justify-between md:justify-end border-t md:border-t-0 pt-2 md:pt-0">
+          <button
+            onClick={handleSelectAll}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold transition-all text-xs"
+          >
+            {isAllFilteredSelected ? (
+              <CheckSquare className="w-4 h-4 text-emerald-600" />
+            ) : (
+              <Square className="w-4 h-4 text-slate-400" />
+            )}
+            <span>{isAllFilteredSelected ? 'Batal Pilih Semua' : 'Pilih Semua'}</span>
+          </button>
+
+          <span className="text-slate-500 font-mono text-[11px]">
+            {filteredMembers.length} DITAMPILKAN
+          </span>
         </div>
       </div>
+
+      {/* FLOATING BULK SELECTION ACTION BAR (Always visible when items selected) */}
+      {selectedIds.length > 0 && (
+        <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center space-x-3">
+            <span className="w-6 h-6 rounded-full bg-emerald-500 text-slate-950 font-extrabold flex items-center justify-center text-xs">
+              {selectedIds.length}
+            </span>
+            <div>
+              <p className="text-xs font-bold font-mono">
+                {selectedIds.length} Strip Anggota Terpilih
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Pilih aksi massal untuk anggota yang telah dicentang.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleClearSelection}
+              className="px-3 py-1.5 text-xs text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors font-medium"
+            >
+              Batalkan Seleksi
+            </button>
+
+            {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+              <button
+                onClick={handleOpenDeleteConfirm}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus {selectedIds.length} Anggota Terpilih</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* VIEW MODE 1: FLIGHT PROGRESS STRIPS (EFPS ATC RACK VIEW) */}
       {viewMode === 'fps' ? (
         <div className="space-y-3">
           {filteredMembers.length === 0 ? (
             <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-sm font-mono text-xs text-slate-400">
-              NO FLIGHT PROGRESS STRIPS FOUND MATCHING CURRENT FILTER CRITERIA.
+              TIDAK ADA DATA ANGGOTA SESUAI DENGAN FILTER TAHUN MASUK ATAU PENCARIAN.
             </div>
           ) : (
             filteredMembers.map((member, idx) => {
               const { isToday, isUpcoming, daysRemaining, hasLineId, age } = getMemberStatus(member);
               const assignedGroupName =
                 groups.find((g) => member.assigned_groups?.includes(g.id))?.group_name || 'Grup Inti MP';
+              const isSelected = selectedIds.includes(member.id);
 
               // Strip accent colors
               let borderAccent = 'border-l-slate-400';
-              let stripBg = 'bg-white';
-              let badgeColor = 'bg-slate-100 text-slate-700';
+              let stripBg = isSelected ? 'bg-blue-50/40 ring-2 ring-blue-400' : 'bg-white';
 
               if (isToday) {
                 borderAccent = 'border-l-emerald-500';
-                stripBg = 'bg-emerald-50/20';
-                badgeColor = 'bg-emerald-600 text-white animate-pulse';
+                stripBg = isSelected ? 'bg-emerald-50/50 ring-2 ring-emerald-500' : 'bg-emerald-50/20';
               } else if (!hasLineId) {
                 borderAccent = 'border-l-amber-500';
-                stripBg = 'bg-amber-50/20';
-                badgeColor = 'bg-amber-500 text-slate-950 font-bold';
+                stripBg = isSelected ? 'bg-amber-50/50 ring-2 ring-amber-500' : 'bg-amber-50/20';
               } else if (isUpcoming) {
                 borderAccent = 'border-l-cyan-500';
-                stripBg = 'bg-cyan-50/20';
-                badgeColor = 'bg-cyan-600 text-white';
+                stripBg = isSelected ? 'bg-cyan-50/50 ring-2 ring-cyan-500' : 'bg-cyan-50/20';
               }
 
               return (
@@ -396,69 +629,131 @@ export default function BirthdayManagementPage() {
                   key={member.id}
                   className={`${stripBg} border border-slate-300/80 rounded-xl shadow-sm hover:shadow-md transition-all font-mono text-xs overflow-hidden border-l-[8px] ${borderAccent} flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 hover:border-slate-400 group`}
                 >
-                  {/* CELL 1: CALLSIGN / IDENTITY */}
-                  <div className="p-3.5 lg:w-64 flex-shrink-0 flex flex-col justify-between bg-slate-50/60">
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
+                  {/* CELL 0: CHECKBOX FOR SELECTION */}
+                  <div className="p-3 lg:w-12 flex-shrink-0 flex items-center justify-center bg-slate-50/80">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSelect(member.id)}
+                      className="p-1 text-slate-500 hover:text-emerald-600 transition-colors"
+                      title={isSelected ? 'Batalkan pilihan' : 'Pilih anggota untuk dihapus / dikelola'}
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-5 h-5 text-emerald-600 fill-emerald-50" />
+                      ) : (
+                        <Square className="w-5 h-5 text-slate-300 hover:text-slate-500" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* CELL 1: CALLSIGN / IDENTITY + BAPTISMAL NAME + CLASS + ENTRY YEAR */}
+                  <div className="p-3.5 lg:w-72 flex-shrink-0 flex flex-col justify-between bg-slate-50/40 font-sans">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono font-bold mb-1">
                       <span>CALLSIGN // ID</span>
-                      <span className="font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded text-[10px]">
+                      <span className="text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded text-[10px]">
                         MP-{(idx + 1).toString().padStart(2, '0')}
                       </span>
                     </div>
-                    <div className="font-bold text-slate-900 text-sm font-sans uppercase tracking-tight truncate">
-                      {member.full_name}
+
+                    <div>
+                      {/* Nama Baptis Badge */}
+                      {member.baptismal_name && (
+                        <div className="inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-md mb-1 border border-emerald-200">
+                          <Sparkles className="w-3 h-3 text-emerald-600" />
+                          <span>{member.baptismal_name}</span>
+                        </div>
+                      )}
+
+                      {/* Nama Lengkap */}
+                      <div className="font-bold text-slate-900 text-sm tracking-tight truncate">
+                        {member.full_name}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-sans mt-0.5 truncate">
-                      {member.notes || 'Anggota Komunitas MP'}
+
+                    {/* Asal Kelas & Tahun Masuk */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2 font-mono text-[10px]">
+                      {member.class_origin && (
+                        <span className="bg-slate-200/80 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                          Kelas: {member.class_origin}
+                        </span>
+                      )}
+                      {member.entry_year && (
+                        <span className="bg-blue-100/80 text-blue-800 px-1.5 py-0.5 rounded font-semibold border border-blue-200">
+                          Masuk: {member.entry_year}
+                        </span>
+                      )}
+                      {member.notes && (
+                        <span className="text-slate-500 text-[10px] truncate max-w-[140px]" title={member.notes}>
+                          • {member.notes}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   {/* CELL 2: FLIGHT LEVEL (FL) & BIRTH DATE */}
-                  <div className="p-3.5 lg:w-40 flex-shrink-0 flex flex-col justify-between bg-white">
+                  <div className="p-3.5 lg:w-44 flex-shrink-0 flex flex-col justify-between bg-white font-mono">
                     <div className="text-[10px] text-slate-400 font-bold">FL // BIRTH DATE</div>
                     <div className="text-base font-extrabold text-slate-900 tracking-wider">
                       {member.birth_date} {MONTH_SHORT[member.birth_month]}
                     </div>
                     <div className="text-[10px] text-slate-500 font-sans">
-                      {member.birth_year ? `Tahun: ${member.birth_year} (${age} Thn)` : 'Tahun: N/A'}
+                      {member.birth_year ? `Tahun: ${member.birth_year} (${age} Thn)` : 'Tahun Lahir: N/A'}
                     </div>
                   </div>
 
-                  {/* CELL 3: ROUTE & TRANSPONDER (SQUAWK CODE / LINE ID) */}
-                  <div className="p-3.5 flex-1 flex flex-col justify-between bg-white">
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
-                      <span className="truncate pr-2">
+                  {/* CELL 3: TRANSPONDER (LINE & INSTAGRAM ACCOUNTS) */}
+                  <div className="p-3.5 flex-1 flex flex-col justify-between bg-white font-mono">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1 font-sans">
+                      <span className="truncate pr-2 font-mono">
                         DEST: <strong className="text-slate-700">{assignedGroupName.toUpperCase()}</strong>
                       </span>
-                      <span>SQWK // LINE ID</span>
+                      <span>SQUAWK & SOSIAL</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-800 font-semibold tracking-tight">
-                        {member.line_user_id || 'NO-SQUAWK // NONE'}
-                      </span>
-                      {hasLineId ? (
-                        <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold border border-emerald-200 flex items-center space-x-0.5">
-                          <Check className="w-2.5 h-2.5" />
-                          <span>IDENT OK</span>
+
+                    {/* Akun LINE & Instagram */}
+                    <div className="space-y-1.5">
+                      {/* Akun LINE */}
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-[10.5px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-800 font-semibold tracking-tight truncate max-w-[200px]">
+                          LINE: {member.line_user_id || 'NO-SQUAWK'}
                         </span>
-                      ) : (
-                        <span className="text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200 animate-pulse">
-                          ALERT: NO ID
+                        {hasLineId ? (
+                          <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold border border-emerald-200 flex items-center space-x-0.5">
+                            <Check className="w-2.5 h-2.5" />
+                            <span>OK</span>
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200">
+                            BELUM ADA LINE
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Akun Instagram */}
+                      <div className="flex items-center space-x-1.5 text-pink-700 font-sans text-xs">
+                        <div className="p-1 rounded bg-pink-50 border border-pink-200 text-pink-600 flex items-center justify-center">
+                          <InstagramIcon className="w-3 h-3" />
+                        </div>
+                        <span className="font-semibold text-[11px] truncate">
+                          {member.instagram_account || (
+                            <span className="text-slate-400 font-normal">Tidak ada Instagram</span>
+                          )}
                         </span>
-                      )}
+                      </div>
                     </div>
+
                     <div className="text-[10px] text-slate-400 font-sans mt-1">
-                      Mention Protocol: <span className="font-semibold text-slate-600">LINE textV2 (&le;20 Mention Batch)</span>
+                      Protokol: <span className="font-semibold text-slate-600">LINE textV2 Mention & Instagram Greetings</span>
                     </div>
                   </div>
 
-                  {/* CELL 4: CLEARANCE & STATUS GATE */}
-                  <div className="p-3.5 lg:w-48 flex-shrink-0 flex flex-col justify-between bg-slate-50/60">
+                  {/* CELL 4: CLEARANCE & STATUS & INDIVIDUAL SELECTION ACTION */}
+                  <div className="p-3.5 lg:w-48 flex-shrink-0 flex flex-col justify-between bg-slate-50/60 font-mono">
                     <div className="text-[10px] text-slate-400 font-bold">STATUS // CLEARANCE</div>
                     <div className="my-1">
                       {isToday ? (
                         <div className="inline-flex items-center space-x-1.5 bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-1 rounded shadow-sm">
                           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                          <span>HARI INI (07:00 WIB)</span>
+                          <span>HARI INI (07:00)</span>
                         </div>
                       ) : isUpcoming ? (
                         <div className="inline-flex items-center space-x-1 bg-cyan-100 text-cyan-800 font-bold text-[10px] px-2 py-0.5 rounded border border-cyan-200">
@@ -478,7 +773,7 @@ export default function BirthdayManagementPage() {
                         className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1"
                       >
                         <Eye className="w-3 h-3" />
-                        <span>INSPECT</span>
+                        <span>DETAIL</span>
                       </button>
 
                       <div className="flex items-center space-x-2">
@@ -497,9 +792,9 @@ export default function BirthdayManagementPage() {
                         )}
                         {(currentRole === 'superadmin' || currentRole === 'logistik') && (
                           <button
-                            onClick={() => handleDeleteMember(member.id)}
-                            className="text-slate-400 hover:text-red-600 p-0.5"
-                            title="Hapus Strip"
+                            onClick={() => handleQuickSelectAndDelete(member.id)}
+                            className="text-slate-400 hover:text-red-600 p-0.5 transition-colors"
+                            title="Pilih dan Hapus Anggota Ini"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -516,86 +811,199 @@ export default function BirthdayManagementPage() {
         /* VIEW MODE 2: CLASSIC TABLE VIEW */
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs font-sans">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-5 py-3">Nama Anggota</th>
-                  <th className="px-5 py-3">Tanggal Lahir</th>
-                  <th className="px-5 py-3">Akun LINE (Mention)</th>
-                  <th className="px-5 py-3">Penugasan Grup</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Aksi</th>
+                  <th className="px-4 py-3 w-10 text-center">
+                    <button onClick={handleSelectAll} title="Pilih Semua">
+                      {isAllFilteredSelected ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3">Nama Lengkap & Nama Baptis</th>
+                  <th className="px-4 py-3">Tanggal Lahir</th>
+                  <th className="px-4 py-3">Kelas & Tahun Masuk</th>
+                  <th className="px-4 py-3">Akun LINE</th>
+                  <th className="px-4 py-3">Akun Instagram</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredMembers.map((member) => {
-                  const assignedGroupName =
-                    groups.find((g) => member.assigned_groups?.includes(g.id))?.group_name || 'Grup Inti MP';
                   const { isToday, isUpcoming, daysRemaining } = getMemberStatus(member);
+                  const isSelected = selectedIds.includes(member.id);
 
                   return (
-                    <tr key={member.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <p className="font-semibold text-slate-900">{member.full_name}</p>
-                        {member.notes && <p className="text-[11px] text-slate-400">{member.notes}</p>}
+                    <tr
+                      key={member.id}
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isSelected ? 'bg-blue-50/40' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelect(member.id)}
+                          className="text-slate-400 hover:text-emerald-600"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-300" />
+                          )}
+                        </button>
                       </td>
-                      <td className="px-5 py-3.5 font-medium text-slate-700">
+                      <td className="px-4 py-3.5">
+                        <div className="font-semibold text-slate-900">{member.full_name}</div>
+                        {member.baptismal_name && (
+                          <div className="text-[11px] text-emerald-700 font-medium flex items-center space-x-1">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            <span>{member.baptismal_name}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 font-medium text-slate-700 font-mono">
                         {member.birth_date} {MONTH_NAMES[member.birth_month]}
                         {member.birth_year ? ` (${member.birth_year})` : ''}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
+                        <div className="font-semibold text-slate-800">
+                          {member.class_origin || '-'}
+                        </div>
+                        <div className="text-[11px] text-blue-600 font-medium">
+                          Masuk: {member.entry_year || '-'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
                         {member.line_user_id ? (
-                          <div className="flex items-center space-x-1.5">
-                            <span className="p-1 rounded-full bg-emerald-50 text-emerald-600">
-                              <CheckCircle className="w-3 h-3" />
-                            </span>
-                            <span className="font-mono text-[11px] text-slate-800">
-                              {member.line_user_id}
-                            </span>
-                          </div>
+                          <span className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-800">
+                            {member.line_user_id}
+                          </span>
                         ) : (
-                          <div className="flex items-center space-x-1.5 text-amber-600">
-                            <AlertCircle className="w-3 h-3" />
-                            <span className="text-[11px]">Belum Ada LINE ID</span>
-                          </div>
+                          <span className="text-[11px] text-amber-600 font-medium">Belum ada</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded text-[11px] font-medium border border-slate-200">
-                          {assignedGroupName}
-                        </span>
+                      <td className="px-4 py-3.5">
+                        {member.instagram_account ? (
+                          <div className="flex items-center space-x-1.5 text-pink-700 font-medium">
+                            <InstagramIcon className="w-3.5 h-3.5 text-pink-500" />
+                            <span>{member.instagram_account}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">-</span>
+                        )}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         {isToday ? (
                           <span className="bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                            HARI INI (07:00)
+                            HARI INI
                           </span>
                         ) : isUpcoming ? (
                           <span className="bg-cyan-100 text-cyan-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-cyan-200">
-                            D-{daysRemaining} MENDATANG
+                            D-{daysRemaining}
                           </span>
                         ) : (
                           <span className="bg-slate-100 text-slate-700 text-[10px] px-2 py-0.5 rounded-full font-medium">
-                            Aktif
+                            Standby
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-right">
-                        {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end space-x-2">
                           <button
-                            onClick={() => handleDeleteMember(member.id)}
-                            className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
-                            title="Hapus"
+                            onClick={() => setSelectedStrip(member)}
+                            className="p-1 text-slate-400 hover:text-emerald-600 rounded"
+                            title="Lihat Detail"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Eye className="w-4 h-4" />
                           </button>
-                        )}
+                          {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                            <button
+                              onClick={() => handleQuickSelectAndDelete(member.id)}
+                              className="p-1 text-slate-400 hover:text-red-600 rounded"
+                              title="Pilih & Hapus"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM BULK / INDIVIDUAL DELETE MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 font-sans">
+            <div className="flex items-center space-x-3 text-red-600 pb-3 border-b border-slate-100">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Konfirmasi Hapus Data Anggota</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedIds.length} data anggota ulang tahun terpilih
+                </p>
+              </div>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin menghapus <strong>{selectedIds.length} data anggota</strong> yang dipilih? Data yang telah dihapus akan dihilangkan dari database dan jadwal siaran otomatis ulang tahun.
+              </p>
+
+              {/* Preview of members to be deleted */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-36 overflow-y-auto space-y-1.5 text-xs">
+                {members
+                  .filter((m) => selectedIds.includes(m.id))
+                  .map((m) => (
+                    <div key={m.id} className="flex items-center justify-between text-slate-700">
+                      <span className="font-medium truncate max-w-[200px]">
+                        {m.full_name} {m.baptismal_name ? `(${m.baptismal_name})` : ''}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {m.birth_date} {MONTH_SHORT[m.birth_month]}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-50 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold shadow-sm transition-all active:scale-95 disabled:opacity-50 flex items-center space-x-1.5"
+              >
+                {isDeleting ? (
+                  <span>Menghapus...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Ya, Hapus {selectedIds.length} Anggota</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -621,33 +1029,46 @@ export default function BirthdayManagementPage() {
             </div>
 
             {/* Strip Preview Card */}
-            <div className="mt-4 p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3 text-xs">
-              <div className="flex items-center justify-between text-slate-400 text-[11px] pb-2 border-b border-slate-800">
-                <span>CALLSIGN // MEMBER NAME:</span>
-                <span className="font-bold text-emerald-400 text-sm">{selectedStrip.full_name}</span>
+            <div className="mt-4 p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3.5 text-xs">
+              {/* Nama Lengkap & Nama Baptis */}
+              <div className="flex flex-col space-y-1 pb-3 border-b border-slate-800">
+                <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                  <span>NAMA LENGKAP:</span>
+                  <span className="font-bold text-emerald-400 text-sm">{selectedStrip.full_name}</span>
+                </div>
+                {selectedStrip.baptismal_name && (
+                  <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                    <span>NAMA BAPTIS:</span>
+                    <span className="text-white font-semibold">{selectedStrip.baptismal_name}</span>
+                  </div>
+                )}
               </div>
 
+              {/* Tanggal Lahir & Usia */}
               <div className="grid grid-cols-2 gap-3 text-[11px]">
                 <div>
-                  <span className="text-slate-500 block">FL / BIRTH DATE:</span>
+                  <span className="text-slate-500 block">TANGGAL LAHIR (FL):</span>
                   <span className="text-white font-bold text-xs">
                     {selectedStrip.birth_date} {MONTH_NAMES[selectedStrip.birth_month]}
                     {selectedStrip.birth_year ? ` (${selectedStrip.birth_year})` : ''}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">DESTINATION GROUP:</span>
+                  <span className="text-slate-500 block">ASAL KELAS & MASUK:</span>
                   <span className="text-white font-bold text-xs">
-                    {groups.find((g) => selectedStrip.assigned_groups?.includes(g.id))?.group_name || 'Grup Inti MP'}
+                    {selectedStrip.class_origin || '-'} • Thn {selectedStrip.entry_year || '-'}
                   </span>
                 </div>
               </div>
 
+              {/* Akun LINE */}
               <div className="pt-2 border-t border-slate-800">
-                <span className="text-slate-500 block text-[11px] mb-1">TRANSPONDER SQUAWK // LINE USER ID:</span>
+                <span className="text-slate-500 block text-[11px] mb-1">
+                  AKUN LINE (SQUAWK // LINE USER ID):
+                </span>
                 <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
                   <span className="text-emerald-300 font-bold">
-                    {selectedStrip.line_user_id || 'NO TRANSPONDER (UNLINKED)'}
+                    {selectedStrip.line_user_id || 'NO TRANSPONDER (BELUM ADA LINE)'}
                   </span>
                   {selectedStrip.line_user_id && (
                     <button
@@ -661,52 +1082,70 @@ export default function BirthdayManagementPage() {
                 </div>
               </div>
 
-              {/* Exact textV2 Substitution Preview */}
+              {/* Akun Instagram */}
               <div className="pt-2 border-t border-slate-800">
-                <span className="text-slate-500 block text-[11px] mb-1">LINE textV2 MENTION SYNTAX:</span>
-                <pre className="bg-slate-900 p-2.5 rounded text-[10.5px] text-slate-300 overflow-x-auto leading-relaxed">
-{`"substitution": {
-  "user_mention": {
-    "type": "mention",
-    "mentionee": {
-      "type": "user",
-      "userId": "${selectedStrip.line_user_id || 'U_MISSING_ID'}"
-    }
-  }
-}`}
-                </pre>
+                <span className="text-slate-500 block text-[11px] mb-1">AKUN INSTAGRAM:</span>
+                <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
+                  <span className="text-pink-400 font-bold flex items-center space-x-1.5 font-sans">
+                    <InstagramIcon className="w-3.5 h-3.5" />
+                    <span>{selectedStrip.instagram_account || 'Belum diisi'}</span>
+                  </span>
+                  {selectedStrip.instagram_account && (
+                    <button
+                      onClick={() => copyToClipboard(selectedStrip.instagram_account || '', 'inspect_ig')}
+                      className="text-slate-400 hover:text-white text-[10px] flex items-center space-x-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>SALIN</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Catatan / Penugasan Grup */}
+              <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+                <span>DESTINASI GRUP: </span>
+                <strong className="text-slate-200">
+                  {groups.find((g) => selectedStrip.assigned_groups?.includes(g.id))?.group_name || 'Grup Inti MP'}
+                </strong>
+                {selectedStrip.notes && (
+                  <p className="mt-1 text-slate-400 italic">Catatan: {selectedStrip.notes}</p>
+                )}
               </div>
             </div>
 
-            <div className="mt-4 flex justify-end space-x-2 text-xs">
+            <div className="mt-4 flex justify-between items-center text-xs">
+              {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                <button
+                  onClick={() => {
+                    handleQuickSelectAndDelete(selectedStrip.id);
+                  }}
+                  className="px-3 py-2 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg font-bold flex items-center space-x-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Anggota Ini</span>
+                </button>
+              )}
+
               <button
                 onClick={() => setSelectedStrip(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold ml-auto"
               >
                 Tutup Inspector
               </button>
-              {(currentRole === 'superadmin' || currentRole === 'logistik') && (
-                <Link
-                  href="/dashboard/broadcast/manual?module=birthday"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold flex items-center space-x-1.5"
-                >
-                  <Gift className="w-3.5 h-3.5" />
-                  <span>Kirim Mention Manual</span>
-                </Link>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Member Modal */}
+      {/* ADD MEMBER MODAL WITH ALL REQUIRED FIELDS */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center space-x-2">
                 <Plane className="w-4 h-4 text-emerald-600" />
-                <h3 className="font-bold text-slate-900 text-base">Tambah Strip Anggota Baru (EFPS)</h3>
+                <h3 className="font-bold text-slate-900 text-base">Tambah Data Anggota Ulang Tahun</h3>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -716,22 +1155,40 @@ export default function BirthdayManagementPage() {
               </button>
             </div>
 
-            <form onSubmit={handleAddMember} className="mt-4 space-y-3.5 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Nama Lengkap (Callsign) *</label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Contoh: Maria Natalia Kusumawati"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+            <form onSubmit={handleAddMember} className="mt-4 space-y-3 text-xs">
+              {/* Nama Lengkap & Nama Baptis */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nama Lengkap *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Contoh: Kevin Pratama"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nama Baptis (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={baptismalName}
+                    onChange={(e) => setBaptismalName(e.target.value)}
+                    placeholder="Contoh: Alexander"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
 
+              {/* Tanggal Lahir (D, M, Y) */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tanggal *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Tanggal Lahir *</label>
                   <select
                     value={birthDate}
                     onChange={(e) => setBirthDate(e.target.value)}
@@ -745,7 +1202,7 @@ export default function BirthdayManagementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Bulan *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Bulan Lahir *</label>
                   <select
                     value={birthMonth}
                     onChange={(e) => setBirthMonth(e.target.value)}
@@ -759,38 +1216,89 @@ export default function BirthdayManagementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tahun (Opsional)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Tahun Lahir</label>
                   <input
                     type="number"
                     value={birthYear}
                     onChange={(e) => setBirthYear(e.target.value)}
-                    placeholder="1998"
+                    placeholder="Contoh: 1998"
                     className="w-full px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none font-mono"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Squawk // LINE User ID (Untuk LINE Mention Asli textV2)
-                </label>
-                <div className="relative">
-                  <AtSign className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              {/* Asal Kelas & Tahun Masuk */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Asal Kelas *
+                  </label>
                   <input
                     type="text"
-                    value={lineUserId}
-                    onChange={(e) => setLineUserId(e.target.value)}
-                    placeholder="Contoh: U1234567890abcdef..."
-                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none font-mono text-xs"
+                    required
+                    value={classOrigin}
+                    onChange={(e) => setClassOrigin(e.target.value)}
+                    placeholder="Contoh: XII MIPA 1, XI-B, X-3"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Squawk ID digunakan sistem untuk LINE mention asli tanpa emotikon boneka.
-                </p>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Tahun Masuk (Angkatan) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={entryYear}
+                    onChange={(e) => setEntryYear(e.target.value)}
+                    placeholder="Contoh: 2024"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
               </div>
 
+              {/* Akun LINE & Akun Instagram */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Akun LINE (LINE User ID / ID Akun)
+                  </label>
+                  <div className="relative">
+                    <AtSign className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={lineUserId}
+                      onChange={(e) => setLineUserId(e.target.value)}
+                      placeholder="Contoh: U123456789... / line_id"
+                      className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Akun Instagram (@username)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-2.5 text-slate-400">
+                      <InstagramIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="text"
+                      value={instagramAccount}
+                      onChange={(e) => setInstagramAccount(e.target.value)}
+                      placeholder="Contoh: @kevin_pratama"
+                      className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Grup LINE Tujuan & Catatan */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Grup LINE Tujuan (Route Destination)</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Grup LINE Tujuan (Route Destination)
+                </label>
                 <select
                   value={selectedGroup}
                   onChange={(e) => setSelectedGroup(e.target.value)}
@@ -810,7 +1318,7 @@ export default function BirthdayManagementPage() {
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Contoh: Tim Multimedia / Pelayan Liturgi"
+                  placeholder="Contoh: Sie Acara / Anggota Aktif"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none"
                 />
               </div>
@@ -825,9 +1333,10 @@ export default function BirthdayManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 shadow-sm"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 shadow-sm disabled:opacity-50"
                 >
-                  Simpan Strip
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Data Anggota'}
                 </button>
               </div>
             </form>

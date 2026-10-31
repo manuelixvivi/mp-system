@@ -47,12 +47,16 @@ export interface LineGroup {
 
 export interface Member {
   id: string;
-  full_name: string;
-  birth_date: number; // 1-31
-  birth_month: number; // 1-12
-  birth_year?: number;
-  line_user_id?: string;
+  full_name: string; // Nama Lengkap
+  baptismal_name?: string; // Nama Baptis
+  birth_date: number; // 1-31 (Tanggal Lahir)
+  birth_month: number; // 1-12 (Bulan Lahir)
+  birth_year?: number; // Tahun Lahir
+  class_origin?: string; // Asal Kelas (misal: XII MIPA 1, XI-A)
+  entry_year?: number; // Tahun Masuk (untuk filter angkatan)
+  line_user_id?: string; // Akun LINE (User ID atau ID LINE)
   line_display_name?: string;
+  instagram_account?: string; // Akun Instagram (misal: @username)
   line_verification_status: 'verified' | 'unverified' | 'not_set';
   status: 'active' | 'inactive';
   notes?: string;

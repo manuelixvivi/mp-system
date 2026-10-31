@@ -51,21 +51,31 @@ CREATE TABLE IF NOT EXISTS line_groups (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. MEMBERS (MP Community members with birth dates)
+-- 4. MEMBERS (MP Community members with birth dates, baptismal, class, entry year, line & IG)
 CREATE TABLE IF NOT EXISTS members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     full_name VARCHAR(255) NOT NULL,
+    baptismal_name VARCHAR(255),
     birth_date INT NOT NULL CHECK (birth_date BETWEEN 1 AND 31),
     birth_month INT NOT NULL CHECK (birth_month BETWEEN 1 AND 12),
     birth_year INT,
+    class_origin VARCHAR(100),
+    entry_year INT,
     line_user_id VARCHAR(100),
     line_display_name VARCHAR(255),
+    instagram_account VARCHAR(100),
     line_verification_status VARCHAR(50) DEFAULT 'unverified' CHECK (line_verification_status IN ('verified', 'unverified', 'not_set')),
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure columns exist for existing tables
+ALTER TABLE members ADD COLUMN IF NOT EXISTS baptismal_name VARCHAR(255);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS class_origin VARCHAR(100);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS entry_year INT;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS instagram_account VARCHAR(100);
 
 -- 5. MEMBER LINE ACCOUNTS (Audit trail of linked accounts)
 CREATE TABLE IF NOT EXISTS member_line_accounts (

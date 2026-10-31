@@ -543,7 +543,31 @@ export function createMember(member: Omit<Member, 'id' | 'created_at'>): Member 
   db.members.push(newMember);
   saveDatabase(db);
   if (isSupabaseConfigured && supabase) {
-    supabase.from('members').insert([newMember]).then();
+    supabase
+      .from('members')
+      .insert([newMember])
+      .then(({ error }) => {
+        if (error) {
+          console.warn('Supabase member insert warning:', error.message);
+          // If schema cache lacks newly added columns, fall back to base columns for Supabase
+          if (error.message.includes('schema cache') || error.message.includes('column')) {
+            const basePayload = {
+              id: newMember.id,
+              full_name: newMember.full_name,
+              birth_date: newMember.birth_date,
+              birth_month: newMember.birth_month,
+              birth_year: newMember.birth_year,
+              line_user_id: newMember.line_user_id,
+              line_display_name: newMember.line_display_name,
+              line_verification_status: newMember.line_verification_status,
+              status: newMember.status,
+              notes: newMember.notes,
+              created_at: newMember.created_at,
+            };
+            supabase.from('members').insert([basePayload]).then();
+          }
+        }
+      });
   }
   return newMember;
 }
@@ -555,7 +579,11 @@ export function updateMember(id: string, updates: Partial<Member>): Member | nul
   db.members[idx] = { ...db.members[idx], ...updates, updated_at: new Date().toISOString() };
   saveDatabase(db);
   if (isSupabaseConfigured && supabase) {
-    supabase.from('members').update(updates).eq('id', id).then();
+    supabase.from('members').update(updates).eq('id', id).then(({ error }) => {
+      if (error) {
+        console.warn('Supabase updateMember warning:', error.message);
+      }
+    });
   }
   return db.members[idx];
 }
@@ -567,11 +595,44 @@ export function deleteMember(id: string): boolean {
   if (db.members.length !== initLen) {
     saveDatabase(db);
     if (isSupabaseConfigured && supabase) {
-      supabase.from('members').delete().eq('id', id).then();
+      supabase.from('members').delete().eq('id', id).then(({ error }) => {
+        if (error) console.error('Supabase deleteMember error:', error.message);
+      });
     }
     return true;
   }
   return false;
+}
+
+export function deleteMembersBulk(ids: string[]): { success: boolean; count: number; deletedIds: string[] } {
+  if (!ids || ids.length === 0) {
+    return { success: true, count: 0, deletedIds: [] };
+  }
+  const db = loadDatabase();
+  const idSet = new Set(ids);
+  const initialLen = db.members.length;
+  const deletedMembers = db.members.filter((m) => idSet.has(m.id));
+  db.members = db.members.filter((m) => !idSet.has(m.id));
+
+  const count = initialLen - db.members.length;
+  if (count > 0) {
+    saveDatabase(db);
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('members')
+        .delete()
+        .in('id', ids)
+        .then(({ error }) => {
+          if (error) console.error('Supabase deleteMembersBulk error:', error.message);
+        });
+    }
+  }
+
+  return {
+    success: true,
+    count,
+    deletedIds: deletedMembers.map((m) => m.id),
+  };
 }
 
 // Devotionals
