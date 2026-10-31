@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  getProfileById,
+  getDevotionalById,
+  getDevotionalByDate,
+  getLineGroups,
+  getMembers,
+  addDelivery,
+  addActivityLog,
+  addNotification,
+} from '@/lib/db/store';
+import { LineApiClient } from '@/lib/line/client';
+import { UserRole } from '@/types';
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { module, targetGroupIds, devotionalId, customMessage, senderProfileId } = body;
+
+    if (!module || !targetGroupIds || !Array.isArray(targetGroupIds) || targetGroupIds.length === 0) {
+      return NextResponse.json({ error: 'Module and targetGroupIds are required' }, { status: 400 });
+    }
+
+    // Role check
+    const sender = getProfileById(senderProfileId || '11111111-1111-1111-1111-111111111111');
+    const role: UserRole = sender ? sender.role : 'superadmin';
+
+    if (module === 'devotional' && role !== 'superadmin' && role !== 'liturgi') {
+      return NextResponse.json({ error: 'Akses ditolak: Anda tidak memiliki wewenang siaran renungan.' }, { status: 403 });
+    }
+
+    if (module === 'birthday' && role !== 'superadmin' && role !== 'logistik') {
+      return NextResponse.json({ error: 'Akses ditolak: Anda tidak memiliki wewenang siaran ulang tahun.' }, { status: 403 });
+    }
+
+    const lineClient = new LineApiClient();
+    const allGroups = getLineGroups();
+    const selectedGroups = allGroups.filter((g) => targetGroupIds.includes(g.id));
+
+    if (selectedGroups.length === 0) {
+      return NextResponse.json({ error: 'Tidak ada grup valid yang dipilih' }, { status: 400 });
+    }
+
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    // --- EXECUTE DEVOTIONAL BROADCAST ---
+    if (module === 'devotional') {
+      let devotional = devotionalId ? getDevotionalById(devotionalId) : null;
+      if (!devotional) {
+        const todayIso = new Date().toISOString().split('T')[0];
+        devotional = getDevotionalByDate(todayIso);
+      }
+
+      const messageContent = customMessage || devotional?.formatted_message;
+      if (!messageContent) {
+        return NextResponse.json({ error: 'Konten renungan tidak ditemukan' }, { status: 400 });
+      }
+
+      for (const grp of selectedGroups) {
+        const payload = LineApiClient.buildDevotionalMessage(messageContent);
+        const result = await lineClient.pushMessage(grp.group_id, [payload]);
+
+        if (result.success) {
+          addDelivery({
+            module: 'devotional',
+            reference_id: devotional?.id || `dev_manual_${Date.now()}`,
+            line_group_id: grp.id,
+            group_name: grp.group_name,
+            delivery_type: 'manual',
+            sender_profile_id: sender?.id,
+            sender_name: sender?.name || 'Administrator',
+            sender_channel: 'dashboard',
+            status: 'success',
+            idempotency_key: `manual_dash_dev_${Date.now()}_${grp.id}`,
+          });
+          sentCount++;
+        } else {
+          errors.push(`${grp.group_name}: ${result.error}`);
+        }
+      }
+
+      addActivityLog({
+        user_id: sender?.id,
+        user_name: sender?.name || 'Administrator',
+        actor_type: 'user',
+        action: 'manual_broadcast_sent',
+        entity_type: 'devotional',
+        entity_id: devotional?.id || 'manual',
+        details: { targetGroups: selectedGroups.map((g) => g.group_name), successCount: sentCount },
+      });
+    }
+
+    // --- EXECUTE BIRTHDAY BROADCAST ---
+    if (module === 'birthday') {
+      const today = new Date();
+      const todayDate = today.getDate();
+      const todayMonth = today.getMonth() + 1;
+
+      const birthdayMembers = getMembers().filter(
+        (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
+      );
+
+      if (birthdayMembers.length === 0) {
+        return NextResponse.json({ error: 'Tidak ada anggota aktif yang berulang tahun hari ini.' }, { status: 400 });
+      }
+
+      for (const grp of selectedGroups) {
+        // Members assigned to this group or all if no group assigned
+        const grpMembers = birthdayMembers.filter(
+          (m) => !m.assigned_groups || m.assigned_groups.length === 0 || m.assigned_groups.includes(grp.id)
+        );
+
+        if (grpMembers.length === 0) continue;
+
+        const batches = LineApiClient.buildBirthdayBatches(grpMembers);
+        for (const b of batches) {
+          const res = await lineClient.pushMessage(grp.group_id, [b.messagePayload]);
+          if (res.success) {
+            addDelivery({
+              module: 'birthday',
+              reference_id: `bday_manual_${Date.now()}`,
+              line_group_id: grp.id,
+              group_name: grp.group_name,
+              delivery_type: 'manual',
+              sender_profile_id: sender?.id,
+              sender_name: sender?.name || 'Administrator',
+              sender_channel: 'dashboard',
+              status: 'success',
+              idempotency_key: `manual_dash_bday_${Date.now()}_${grp.id}_b${b.batchNumber}`,
+            });
+          }
+        }
+        sentCount++;
+      }
+
+      addActivityLog({
+        user_id: sender?.id,
+        user_name: sender?.name || 'Administrator',
+        actor_type: 'user',
+        action: 'manual_broadcast_sent',
+        entity_type: 'birthday',
+        entity_id: 'bday_manual',
+        details: { targetGroups: selectedGroups.map((g) => g.group_name), recipientsCount: birthdayMembers.length },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Manual broadcast berhasil dikirimkan ke ${sentCount} grup!`,
+      sentCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+  }
+}

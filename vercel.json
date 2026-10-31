@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/devotional-scrape",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-broadcast",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/devotional-broadcast",
+      "schedule": "45 2 * * *"
+    }
+  ]
+}
