@@ -10,6 +10,7 @@ export interface Profile {
   password_hash?: string; // Securely hashed with bcrypt - NEVER exposed to frontend
   line_user_id?: string;
   is_active: boolean;
+  registration_token?: string; // One-time token e.g. "ABEL123" for LINE activation
   created_at: string;
   updated_at?: string;
 }

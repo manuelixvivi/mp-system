@@ -148,6 +148,102 @@ export async function validateUserPassword(
   }
 }
 
+export function generateRegistrationToken(name: string): string {
+  const db = loadDatabase();
+  const cleanName = (name.split(' ')[0] || 'USER')
+    .replace(/[^a-zA-Z]/g, '')
+    .toUpperCase()
+    .slice(0, 5) || 'TOKEN';
+
+  let token = '';
+  let attempts = 0;
+  do {
+    const randomDigits = Math.floor(100 + Math.random() * 900); // 3 digits, e.g. 123
+    token = `${cleanName}${randomDigits}`;
+    attempts++;
+  } while (
+    db.profiles.some((p) => p.registration_token?.toUpperCase() === token) &&
+    attempts < 50
+  );
+
+  return token;
+}
+
+export function activateProfileByToken(
+  token: string,
+  lineUserId: string
+): { success: boolean; profile?: SafeProfile; error?: string } {
+  if (!token || !lineUserId) {
+    return { success: false, error: 'Token registrasi dan LINE User ID wajib diisi.' };
+  }
+
+  const db = loadDatabase();
+  const cleanToken = token.trim().toUpperCase();
+
+  const profileIdx = db.profiles.findIndex(
+    (p) => p.registration_token?.toUpperCase() === cleanToken
+  );
+
+  if (profileIdx === -1) {
+    return {
+      success: false,
+      error: `Token registrasi "${cleanToken}" tidak ditemukan atau sudah pernah digunakan.`,
+    };
+  }
+
+  const target = db.profiles[profileIdx];
+
+  // If another profile currently holds this LINE User ID, unlink it first
+  db.profiles.forEach((p, idx) => {
+    if (idx !== profileIdx && p.line_user_id === lineUserId) {
+      db.profiles[idx].line_user_id = undefined;
+    }
+  });
+
+  // Activate the target profile and link LINE User ID
+  db.profiles[profileIdx] = {
+    ...target,
+    line_user_id: lineUserId,
+    is_active: true,
+    registration_token: undefined, // Consume token (one-time use)
+    updated_at: new Date().toISOString(),
+  };
+
+  saveDatabase(db);
+
+  const activatedSafeProfile = sanitizeProfile(db.profiles[profileIdx]);
+
+  // Log successful activation audit
+  addActivityLog({
+    user_id: activatedSafeProfile.id,
+    user_name: activatedSafeProfile.name,
+    actor_type: 'user',
+    action: 'line_account_activated',
+    entity_type: 'profile',
+    entity_id: activatedSafeProfile.id,
+    details: {
+      token_used: cleanToken,
+      line_user_id: lineUserId,
+      email: activatedSafeProfile.email,
+      role: activatedSafeProfile.role,
+    },
+  });
+
+  return { success: true, profile: activatedSafeProfile };
+}
+
+export function regenerateProfileToken(profileId: string): string | null {
+  const db = loadDatabase();
+  const idx = db.profiles.findIndex((p) => p.id === profileId);
+  if (idx === -1) return null;
+
+  const newToken = generateRegistrationToken(db.profiles[idx].name);
+  db.profiles[idx].registration_token = newToken;
+  db.profiles[idx].updated_at = new Date().toISOString();
+  saveDatabase(db);
+  return newToken;
+}
+
 export function createProfile(
   profile: Omit<Profile, 'id' | 'created_at'>,
   plainPassword?: string
@@ -164,10 +260,20 @@ export function createProfile(
     ? bcrypt.hashSync(plainPassword, 10)
     : profile.password_hash || bcrypt.hashSync('MPCommunity2026!', 10);
 
+  // If line_user_id is not yet set, generate a registration token if not provided
+  const regToken =
+    profile.registration_token ||
+    (!profile.line_user_id ? generateRegistrationToken(profile.name) : undefined);
+
+  // If waiting for LINE registration token, account is pending until claimed via LINE
+  const isActive = profile.line_user_id ? (profile.is_active ?? true) : false;
+
   const newProfile: Profile = {
     ...profile,
     email: normalizedEmail,
     password_hash: passwordHash,
+    registration_token: regToken,
+    is_active: isActive,
     id: `prof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     created_at: new Date().toISOString(),
   };

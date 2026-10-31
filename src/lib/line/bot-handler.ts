@@ -1,5 +1,6 @@
 import {
   getProfileByLineUserId,
+  activateProfileByToken,
   addActivityLog,
   getDevotionalByDate,
   getMembers,
@@ -50,7 +51,38 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
   const rawText = (event.message.text || '').trim();
   const replyToken = event.replyToken;
 
-  // 1. Verify Authentication & Role
+  // 1. Check for Account Registration Command (/registrasi_akun <TOKEN>)
+  const matchReg = rawText.match(/^\/registrasi_akun(?:\s+([A-Za-z0-9_-]+))?$/i);
+  if (matchReg) {
+    const token = (matchReg[1] || '').trim().toUpperCase();
+
+    if (!token) {
+      const reply = `⚠️ FORMAT REGISTRASI TIDAK LENGKAP\n\nUntuk mengaktivasi akun, gunakan format:\n/registrasi_akun <TOKEN>\n\nContoh:\n/registrasi_akun ABEL123`;
+      if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
+      return { status: 'invalid_token_format', text: reply };
+    }
+
+    const activation = activateProfileByToken(token, lineUserId);
+    if (!activation.success || !activation.profile) {
+      const reply = `⚠️ GAGAL AKTIVASI AKUN\n\n${activation.error || 'Token tidak valid.'}\n\nPastikan format token sudah sesuai dengan yang diberikan oleh Superadmin (contoh: ABEL123). Jika token hangus, silakan minta Superadmin untuk membuat token baru.`;
+      if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
+      return { status: 'activation_failed', text: reply };
+    }
+
+    const prof = activation.profile;
+    const roleLabels: Record<string, string> = {
+      superadmin: 'Superadmin (Akses Penuh)',
+      liturgi: 'Tim Liturgi (Audit & Renungan)',
+      logistik: 'Tim Logistik (Anggota & Ulang Tahun)',
+    };
+
+    const reply = `🎉 REGISTRASI AKUN BERHASIL!\n\nHalo ${prof.name}! Akun petugas Anda telah resmi diaktivasi dan ditautkan dengan akun LINE ini.\n\n👤 Nama Petugas: ${prof.name}\n📧 Email: ${prof.email}\n🛡️ Hak Akses: ${roleLabels[prof.role] || prof.role}\n📱 LINE User ID: ${lineUserId}\n\n💡 Perintah Bot yang dapat Anda gunakan:\n• /menu — Tampilkan menu aksi\n• /status — Cek status otomatisasi hari ini\n• /help — Bantuan perintah bot\n\nAnda juga sudah dapat login ke Web Dashboard MP Control System menggunakan email dan password Anda.`;
+
+    if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
+    return { status: 'activation_success', text: reply, profile: prof };
+  }
+
+  // 2. Verify Authentication & Role
   const userProfile = getProfileByLineUserId(lineUserId);
 
   if (!userProfile) {
@@ -66,11 +98,22 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     const reply = [
       {
         type: 'text',
-        text: `🔒 AKSES DITOLAK — MP CONTROL SYSTEM\n\nAkun LINE Anda (${lineUserId}) belum terdaftar atau belum dihubungkan dengan akun dashboard MP Control System.\n\nSilakan hubungi Superadmin untuk mendaftarkan LINE User ID Anda.`,
+        text: `🔒 AKSES DITOLAK — MP CONTROL SYSTEM\n\nAkun LINE Anda (${lineUserId}) belum terdaftar sebagai petugas aktif MP Control System.\n\n📌 AKTIVASI AKUN PETUGAS:\nJika Anda telah menerima Token Sekali Pakai dari Superadmin, silakan kirim pesan:\n/registrasi_akun <TOKEN>\nContoh: /registrasi_akun ABEL123\n\nAtau hubungi Superadmin untuk membuatkan akun dan token Anda.`,
       },
     ];
     if (replyToken) await lineClient.replyMessage(replyToken, reply);
     return { status: 'unauthorized', lineUserId };
+  }
+
+  // If already registered and tries to run /registrasi_akun again
+  if (rawText.toLowerCase().startsWith('/registrasi_akun')) {
+    const sendReply = async (text: string) => {
+      if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text }]);
+      return { status: 'replied', text };
+    };
+    return await sendReply(
+      `ℹ️ INFORMASI AKUN\n\nAkun LINE ini sudah terdaftar atas nama ${userProfile.name} (${userProfile.role.toUpperCase()}).\nTidak perlu melakukan aktivasi ulang. Silakan ketik /menu untuk mulai menggunakan bot.`
+    );
   }
 
   // 2. Process Command

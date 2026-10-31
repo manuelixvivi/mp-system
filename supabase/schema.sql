@@ -14,10 +14,14 @@ CREATE TABLE IF NOT EXISTS profiles (
     role VARCHAR(50) NOT NULL CHECK (role IN ('superadmin', 'liturgi', 'logistik')),
     password_hash VARCHAR(255) NOT NULL,
     line_user_id VARCHAR(100) UNIQUE,
+    registration_token VARCHAR(50) UNIQUE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure column exists if table was already created
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS registration_token VARCHAR(50) UNIQUE;
 
 -- 2. LINE BOTS (Channel configuration & secrets)
 CREATE TABLE IF NOT EXISTS line_bots (

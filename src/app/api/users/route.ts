@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProfiles, createProfile, deleteProfile, getProfileByEmail, addActivityLog } from '@/lib/db/store';
+import {
+  getProfiles,
+  createProfile,
+  deleteProfile,
+  getProfileByEmail,
+  regenerateProfileToken,
+  addActivityLog,
+} from '@/lib/db/store';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, email, role, line_user_id, password } = body;
+    const { name, email, role, line_user_id, password, registration_token } = body;
 
     if (!name || !email || !role || !password) {
       return NextResponse.json(
@@ -77,14 +84,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Creates profile with bcrypt hashed password (10 salt rounds)
+    // Creates profile with bcrypt hashed password and one-time LINE activation token
     const newProfile = createProfile(
       {
         name: name.trim(),
         email: trimmedEmail,
         role,
-        line_user_id: line_user_id?.trim() || '',
-        is_active: true,
+        line_user_id: line_user_id?.trim() || undefined,
+        registration_token: registration_token ? registration_token.trim().toUpperCase() : undefined,
+        is_active: Boolean(line_user_id?.trim()),
       },
       password
     );
@@ -99,17 +107,60 @@ export async function POST(req: NextRequest) {
       details: {
         created_user_email: newProfile.email,
         assigned_role: newProfile.role,
+        registration_token: newProfile.registration_token,
         creator: superadmin.email,
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: `Akun ${newProfile.name} (${newProfile.role}) berhasil didaftarkan.`,
+      message: `Akun ${newProfile.name} (${newProfile.role}) berhasil didaftarkan. Token aktivasi LINE: ${newProfile.registration_token || 'Langsung Terhubung'}.`,
       user: newProfile,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Gagal membuat akun.' }, { status: 400 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const superadmin = await getAuthenticatedSuperadmin(req);
+  if (!superadmin) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Superadmin yang berhak memperbarui token.' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const { userId, action } = body;
+
+    if (action === 'regenerate_token' && userId) {
+      const newToken = regenerateProfileToken(userId);
+      if (!newToken) {
+        return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 });
+      }
+
+      addActivityLog({
+        user_id: superadmin.id,
+        user_name: superadmin.name,
+        actor_type: 'user',
+        action: 'registration_token_regenerated',
+        entity_type: 'profile',
+        entity_id: userId,
+        details: { new_token: newToken },
+      });
+
+      return NextResponse.json({
+        success: true,
+        newToken,
+        message: `Token registrasi baru berhasil dibuat: ${newToken}`,
+      });
+    }
+
+    return NextResponse.json({ error: 'Aksi tidak valid' }, { status: 400 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Gagal memproses permintaan.' }, { status: 500 });
   }
 }
 

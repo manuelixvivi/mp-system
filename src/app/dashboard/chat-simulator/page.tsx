@@ -121,12 +121,12 @@ export default function ChatSimulatorPage() {
   const quickCommands = [
     { label: '/menu', desc: 'Buka menu wewenang' },
     { label: '/status', desc: 'Cek status harian' },
-    { label: '/help', desc: 'Daftar perintah' },
+    { label: '/registrasi_akun ABEL123', desc: 'Aktivasi akun via token' },
     { label: '/broadcast devotional', desc: 'Siarkan renungan' },
     { label: '/broadcast birthday', desc: 'Siarkan ulang tahun' },
     { label: '/approve', desc: 'Setujui renungan' },
     { label: '/confirm', desc: 'Konfirmasi kirim' },
-    { label: '/batal', desc: 'Batal kirim' },
+    { label: '/help', desc: 'Daftar perintah' },
   ];
 
   return (
