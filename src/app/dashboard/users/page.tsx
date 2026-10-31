@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export default function UserManagementPage() {
-  const { currentRole, currentUser } = useRole();
+  const { currentRole, currentUser, loading: roleLoading } = useRole();
   const [users, setUsers] = useState<SafeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,11 +47,15 @@ export default function UserManagementPage() {
   const [createdProfile, setCreatedProfile] = useState<SafeProfile | null>(null);
 
   const loadUsers = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/users');
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users || []);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.warn('Failed fetching users:', res.status, err);
       }
     } catch (e) {
       console.error('Error fetching users:', e);
@@ -61,10 +65,10 @@ export default function UserManagementPage() {
   };
 
   useEffect(() => {
-    if (currentRole === 'superadmin') {
+    if (!roleLoading && currentRole === 'superadmin') {
       loadUsers();
     }
-  }, [currentRole]);
+  }, [roleLoading, currentRole]);
 
   // Auto-generate suggested token when name changes
   const handleNameChange = (val: string) => {
@@ -193,26 +197,38 @@ export default function UserManagementPage() {
     }
   };
 
+  if (roleLoading) {
+    return (
+      <div className="bg-white p-12 rounded-xl border border-slate-200 text-center max-w-lg mx-auto mt-12 space-y-3 font-sans">
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p className="text-xs text-slate-500 font-medium">Memverifikasi hak akses Superadmin...</p>
+      </div>
+    );
+  }
+
   if (currentRole !== 'superadmin') {
     return (
-      <div className="bg-white p-8 rounded-xl border border-slate-200 text-center max-w-lg mx-auto mt-12 space-y-3">
+      <div className="bg-white p-8 rounded-xl border border-slate-200 text-center max-w-lg mx-auto mt-12 space-y-3 font-sans">
         <Shield className="w-10 h-10 text-amber-500 mx-auto" />
         <h2 className="text-base font-bold text-slate-800">Akses Dibatasi Khusus Superadmin</h2>
-        <p className="text-xs text-slate-500">
-          Halaman User Management hanya dapat diakses oleh Superadmin untuk mendaftarkan akun petugas dan mengelola hak akses.
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Halaman User Management hanya dapat diakses oleh akun Superadmin (saat ini terdeteksi login sebagai{' '}
+          <strong className="text-slate-700">{currentUser?.email || 'Belum Login'}</strong> dengan role{' '}
+          <span className="font-semibold uppercase text-emerald-600">{currentRole}</span>).
         </p>
       </div>
     );
   }
 
   const filteredUsers = users.filter((u) => {
-    const q = searchQuery.toLowerCase();
+    const q = (searchQuery || '').toLowerCase().trim();
+    if (!q) return true;
     return (
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      u.role.toLowerCase().includes(q) ||
-      (u.line_user_id && u.line_user_id.toLowerCase().includes(q)) ||
-      (u.registration_token && u.registration_token.toLowerCase().includes(q))
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.role || '').toLowerCase().includes(q) ||
+      (u.line_user_id ? u.line_user_id.toLowerCase().includes(q) : false) ||
+      (u.registration_token ? u.registration_token.toLowerCase().includes(q) : false)
     );
   });
 

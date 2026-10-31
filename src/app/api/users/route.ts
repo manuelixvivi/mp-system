@@ -19,7 +19,7 @@ async function getAuthenticatedSuperadmin(req: NextRequest) {
   if (!sessionUser || !sessionUser.email) return null;
 
   // Confirm directly against database profile
-  const dbUser = getProfileByEmail(sessionUser.email);
+  const dbUser = await getProfileByEmail(sessionUser.email);
   if (!dbUser || !dbUser.is_active || dbUser.role !== 'superadmin') {
     return null;
   }
@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Returns safe profiles with password_hash strictly omitted
-  const users = getProfiles();
+  // Returns safe profiles live from Supabase
+  const users = await getProfiles();
   return NextResponse.json({ users });
 }
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     const trimmedEmail = email.trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+    if (!/^\S+@\S+$/.test(trimmedEmail)) {
       return NextResponse.json(
         { error: 'Format email tidak valid.' },
         { status: 400 }
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Creates profile with bcrypt hashed password and one-time LINE activation token
-    const newProfile = createProfile(
+    const newProfile = await createProfile(
       {
         name: name.trim(),
         email: trimmedEmail,
@@ -136,7 +136,7 @@ export async function PATCH(req: NextRequest) {
     const { userId, action } = body;
 
     if (action === 'regenerate_token' && userId) {
-      const newToken = regenerateProfileToken(userId);
+      const newToken = await regenerateProfileToken(userId);
       if (!newToken) {
         return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 });
       }
@@ -188,7 +188,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const deleted = deleteProfile(userId);
+    const deleted = await deleteProfile(userId);
     if (!deleted) {
       return NextResponse.json({ error: 'Akun tidak ditemukan.' }, { status: 404 });
     }

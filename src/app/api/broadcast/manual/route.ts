@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sender = getProfileByEmail(sessionUser.email);
+    const sender = await getProfileByEmail(sessionUser.email);
     if (!sender || !sender.is_active) {
       return NextResponse.json(
         { error: 'Akses ditolak: Akun tidak ditemukan atau berstatus non-aktif.' },

@@ -59,20 +59,14 @@ export async function syncFromSupabase(): Promise<void> {
 
   try {
     const [profRes, grpRes, memRes] = await Promise.all([
-      supabase.from('profiles').select('*'),
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('line_groups').select('*'),
       supabase.from('members').select('*'),
     ]);
 
     const db = inMemoryDb || loadDatabase();
     if (profRes.data && profRes.data.length > 0) {
-      const supaProfiles = profRes.data as Profile[];
-      const mergedMap = new Map<string, Profile>();
-      supaProfiles.forEach((p) => mergedMap.set(p.id, p));
-      db.profiles.forEach((p) => {
-        if (!mergedMap.has(p.id)) mergedMap.set(p.id, p);
-      });
-      db.profiles = Array.from(mergedMap.values());
+      db.profiles = profRes.data as Profile[];
     }
     if (grpRes.data && grpRes.data.length > 0) {
       db.line_groups = grpRes.data as LineGroup[];
@@ -145,19 +139,71 @@ export function sanitizeProfile(profile: Profile): SafeProfile {
   return safe;
 }
 
-// Profiles
-export function getProfiles(): SafeProfile[] {
+// Profiles - Live from Supabase if configured with fallback to local store
+export async function getProfiles(): Promise<SafeProfile[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const db = inMemoryDb || loadDatabase();
+        db.profiles = data as Profile[];
+        saveDatabase(db);
+        return data.map(sanitizeProfile);
+      }
+    } catch (err) {
+      console.warn('Supabase getProfiles warning:', err);
+    }
+  }
   return loadDatabase().profiles.map(sanitizeProfile);
 }
 
-export function getProfileById(id: string): SafeProfile | undefined {
+export async function getProfileById(id: string): Promise<SafeProfile | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+      if (!error && data) {
+        return sanitizeProfile(data);
+      }
+    } catch (err) {}
+  }
   const profile = loadDatabase().profiles.find((p) => p.id === id);
   return profile ? sanitizeProfile(profile) : undefined;
 }
 
-export function getProfileByEmail(email: string): SafeProfile | undefined {
+export async function getProfileByEmail(email: string): Promise<SafeProfile | undefined> {
+  if (!email) return undefined;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // 1. Direct Supabase Query if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: supaUser, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!error && supaUser) {
+        const db = inMemoryDb || loadDatabase();
+        const idx = db.profiles.findIndex((p) => p.email.toLowerCase() === normalizedEmail);
+        if (idx !== -1) db.profiles[idx] = supaUser;
+        else db.profiles.unshift(supaUser);
+        saveDatabase(db);
+        return sanitizeProfile(supaUser);
+      }
+    } catch (err) {
+      console.warn('Supabase getProfileByEmail warning, fallback to local:', err);
+    }
+  }
+
+  // 2. Fallback to local DB
   const profile = loadDatabase().profiles.find(
-    (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active
+    (p) => p.email.toLowerCase() === normalizedEmail && p.is_active
   );
   return profile ? sanitizeProfile(profile) : undefined;
 }
@@ -364,40 +410,68 @@ export async function activateProfileByToken(
   return { success: true, profile: activatedSafeProfile };
 }
 
-export function regenerateProfileToken(profileId: string): string | null {
+export async function regenerateProfileToken(profileId: string): Promise<string | null> {
   const db = loadDatabase();
   const idx = db.profiles.findIndex((p) => p.id === profileId);
-  if (idx === -1) return null;
 
-  const newToken = generateRegistrationToken(db.profiles[idx].name);
-  db.profiles[idx].registration_token = newToken;
-  db.profiles[idx].updated_at = new Date().toISOString();
-  saveDatabase(db);
+  let profileName = 'USER';
+  if (idx !== -1) {
+    profileName = db.profiles[idx].name;
+  } else if (isSupabaseConfigured && supabase) {
+    const { data } = await supabase.from('profiles').select('name').eq('id', profileId).maybeSingle();
+    if (data?.name) {
+      profileName = data.name;
+    } else {
+      return null;
+    }
+  } else {
+    return null;
+  }
+
+  const newToken = generateRegistrationToken(profileName);
+
+  if (idx !== -1) {
+    db.profiles[idx].registration_token = newToken;
+    db.profiles[idx].updated_at = new Date().toISOString();
+    saveDatabase(db);
+  }
 
   if (isSupabaseConfigured && supabase) {
-    supabase
+    await supabase
       .from('profiles')
       .update({
         registration_token: newToken,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', profileId)
-      .then();
+      .eq('id', profileId);
   }
 
   return newToken;
 }
 
-export function createProfile(
+export async function createProfile(
   profile: Omit<Profile, 'id' | 'created_at'>,
   plainPassword?: string
-): SafeProfile {
+): Promise<SafeProfile> {
   const db = loadDatabase();
   const normalizedEmail = profile.email.trim().toLowerCase();
 
-  const existing = db.profiles.find((p) => p.email.trim().toLowerCase() === normalizedEmail);
-  if (existing) {
-    throw new Error(`Email "${profile.email}" sudah terdaftar dalam sistem.`);
+  // Check Supabase if configured
+  if (isSupabaseConfigured && supabase) {
+    const { data: existingSupa } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingSupa) {
+      throw new Error(`Email "${profile.email}" sudah terdaftar dalam sistem.`);
+    }
+  } else {
+    const existing = db.profiles.find((p) => p.email.trim().toLowerCase() === normalizedEmail);
+    if (existing) {
+      throw new Error(`Email "${profile.email}" sudah terdaftar dalam sistem.`);
+    }
   }
 
   const passwordHash = plainPassword
@@ -426,29 +500,34 @@ export function createProfile(
   saveDatabase(db);
 
   if (isSupabaseConfigured && supabase) {
-    supabase
-      .from('profiles')
-      .insert([newProfile])
-      .then(({ error }) => {
-        if (error) console.error('Supabase profile insertion error:', error.message);
-      });
+    const { error } = await supabase.from('profiles').insert([newProfile]);
+    if (error) {
+      console.error('Supabase profile insertion error:', error.message);
+      throw new Error(`Gagal menyimpan akun ke Supabase: ${error.message}`);
+    }
   }
 
   return sanitizeProfile(newProfile);
 }
 
-export function deleteProfile(id: string): boolean {
+export async function deleteProfile(id: string): Promise<boolean> {
   const db = loadDatabase();
   const initialLen = db.profiles.length;
   db.profiles = db.profiles.filter((p) => p.id !== id);
   if (db.profiles.length !== initialLen) {
     saveDatabase(db);
-    if (isSupabaseConfigured && supabase) {
-      supabase.from('profiles').delete().eq('id', id).then();
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteProfile error:', error.message);
+      return false;
     }
     return true;
   }
-  return false;
+
+  return db.profiles.length !== initialLen;
 }
 
 export function updateProfile(id: string, updates: Partial<Profile>, newPlainPassword?: string): SafeProfile | null {

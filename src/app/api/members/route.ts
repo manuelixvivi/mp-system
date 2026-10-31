@@ -17,7 +17,7 @@ async function getAuthorizedUser(req: NextRequest) {
   if (!token) return null;
   const sessionUser = await verifySessionToken(token);
   if (!sessionUser?.email) return null;
-  const dbUser = getProfileByEmail(sessionUser.email);
+  const dbUser = await getProfileByEmail(sessionUser.email);
   if (!dbUser || !dbUser.is_active) return null;
   return dbUser;
 }

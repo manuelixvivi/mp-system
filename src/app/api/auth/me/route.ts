@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Strictly validate live profile and role directly from database
-  const dbUser = getProfileByEmail(sessionUser.email);
+  const dbUser = await getProfileByEmail(sessionUser.email);
   if (!dbUser || !dbUser.is_active) {
     return NextResponse.json({ user: null }, { status: 401 });
   }

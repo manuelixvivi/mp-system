@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const auditor = getProfileByEmail(sessionUser.email);
+    const auditor = await getProfileByEmail(sessionUser.email);
     if (!auditor || !auditor.is_active) {
       return NextResponse.json(
         { error: 'Akses ditolak: Akun tidak ditemukan atau non-aktif.' },
