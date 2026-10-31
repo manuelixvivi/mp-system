@@ -4,17 +4,37 @@ import {
   createMember,
   updateMember,
   deleteMember,
+  getProfileByEmail,
   addActivityLog,
 } from '@/lib/db/store';
+import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function getAuthorizedUser(req: NextRequest) {
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  const sessionUser = await verifySessionToken(token);
+  if (!sessionUser?.email) return null;
+  const dbUser = getProfileByEmail(sessionUser.email);
+  if (!dbUser || !dbUser.is_active) return null;
+  return dbUser;
+}
+
+export async function GET(req: NextRequest) {
   const members = getMembers();
   return NextResponse.json({ members });
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getAuthorizedUser(req);
+  if (!user || (user.role !== 'superadmin' && user.role !== 'logistik')) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Tim Logistik dan Superadmin yang berwenang menambah anggota.' },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await req.json();
     const { full_name, birth_date, birth_month, birth_year, line_user_id, assigned_groups, notes } = body;
@@ -39,6 +59,8 @@ export async function POST(req: NextRequest) {
     });
 
     addActivityLog({
+      user_id: user.id,
+      user_name: user.name,
       actor_type: 'user',
       action: 'member_created',
       entity_type: 'member',
@@ -53,6 +75,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const user = await getAuthorizedUser(req);
+  if (!user || (user.role !== 'superadmin' && user.role !== 'logistik')) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Tim Logistik dan Superadmin yang berwenang mengubah data anggota.' },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await req.json();
     const { id, ...updates } = body;
@@ -71,6 +101,8 @@ export async function PUT(req: NextRequest) {
     }
 
     addActivityLog({
+      user_id: user.id,
+      user_name: user.name,
       actor_type: 'user',
       action: 'member_updated',
       entity_type: 'member',
@@ -85,6 +117,14 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const user = await getAuthorizedUser(req);
+  if (!user || (user.role !== 'superadmin' && user.role !== 'logistik')) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Tim Logistik dan Superadmin yang berwenang menghapus data anggota.' },
+      { status: 403 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -99,6 +139,8 @@ export async function DELETE(req: NextRequest) {
     }
 
     addActivityLog({
+      user_id: user.id,
+      user_name: user.name,
       actor_type: 'user',
       action: 'member_deleted',
       entity_type: 'member',

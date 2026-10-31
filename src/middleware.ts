@@ -16,7 +16,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/groups') ||
     pathname.startsWith('/api/broadcast/manual') ||
     pathname.startsWith('/api/devotionals/audit') ||
-    pathname.startsWith('/api/settings');
+    pathname.startsWith('/api/settings') ||
+    pathname.startsWith('/api/users');
 
   // If user is trying to access protected route without valid session -> REDIRECT TO /login
   if (isDashboardRoute && !user) {
@@ -30,6 +31,11 @@ export async function middleware(request: NextRequest) {
       { error: 'Akses ditolak: Sesi tidak valid atau belum login.' },
       { status: 401 }
     );
+  }
+
+  // 3. Superadmin-exclusive route enforcement in middleware
+  if (pathname.startsWith('/dashboard/users') && user && user.role !== 'superadmin') {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
   // 3. If user is ALREADY logged in and visits /login -> REDIRECT TO /dashboard
@@ -49,5 +55,6 @@ export const config = {
     '/api/broadcast/manual/:path*',
     '/api/devotionals/audit/:path*',
     '/api/settings/:path*',
+    '/api/users/:path*',
   ],
 };

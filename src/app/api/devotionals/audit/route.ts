@@ -4,26 +4,47 @@ import {
   saveDevotional,
   updateDevotionalAudit,
   addActivityLog,
-  getProfileById,
+  getProfileByEmail,
 } from '@/lib/db/store';
 import { formatCoffeeBreakTemplate } from '@/lib/llm/gemini';
 import { DevotionalAuditStatus, UserRole } from '@/types';
+import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Authenticate user from session & validate role from database email
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const sessionUser = token ? await verifySessionToken(token) : null;
+    if (!sessionUser || !sessionUser.email) {
+      return NextResponse.json(
+        { error: 'Akses ditolak: Sesi tidak valid atau belum login.' },
+        { status: 401 }
+      );
+    }
+
+    const auditor = getProfileByEmail(sessionUser.email);
+    if (!auditor || !auditor.is_active) {
+      return NextResponse.json(
+        { error: 'Akses ditolak: Akun tidak ditemukan atau non-aktif.' },
+        { status: 403 }
+      );
+    }
+
+    const role: UserRole = auditor.role;
+
+    // Role check: Liturgi or Superadmin strictly from DB
+    if (role !== 'liturgi' && role !== 'superadmin') {
+      return NextResponse.json(
+        { error: 'Akses ditolak: Hanya Tim Liturgi dan Superadmin yang berhak mengaudit.' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
-    const { devotionalId, action, notes, updatedContent, auditorProfileId } = body;
+    const { devotionalId, action, notes, updatedContent } = body;
 
     if (!devotionalId || !action) {
       return NextResponse.json({ error: 'devotionalId and action are required' }, { status: 400 });
-    }
-
-    const auditor = getProfileById(auditorProfileId || '22222222-2222-2222-2222-222222222222');
-    const role: UserRole = auditor ? auditor.role : 'liturgi';
-
-    // Role check: Liturgi or Superadmin
-    if (role !== 'liturgi' && role !== 'superadmin') {
-      return NextResponse.json({ error: 'Akses ditolak: Hanya Tim Liturgi dan Superadmin yang berhak mengaudit.' }, { status: 403 });
     }
 
     const devotional = getDevotionalById(devotionalId);

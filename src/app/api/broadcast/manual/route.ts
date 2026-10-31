@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileById,
+  getProfileByEmail,
   getDevotionalById,
   getDevotionalByDate,
   getLineGroups,
@@ -10,27 +11,51 @@ import {
   addNotification,
 } from '@/lib/db/store';
 import { LineApiClient } from '@/lib/line/client';
+import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 import { UserRole } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Verify authenticated user strictly from session cookie & database email
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const sessionUser = token ? await verifySessionToken(token) : null;
+    if (!sessionUser || !sessionUser.email) {
+      return NextResponse.json(
+        { error: 'Akses ditolak: Sesi tidak valid atau belum login.' },
+        { status: 401 }
+      );
+    }
+
+    const sender = getProfileByEmail(sessionUser.email);
+    if (!sender || !sender.is_active) {
+      return NextResponse.json(
+        { error: 'Akses ditolak: Akun tidak ditemukan atau berstatus non-aktif.' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
-    const { module, targetGroupIds, devotionalId, customMessage, senderProfileId } = body;
+    const { module, targetGroupIds, devotionalId, customMessage } = body;
 
     if (!module || !targetGroupIds || !Array.isArray(targetGroupIds) || targetGroupIds.length === 0) {
       return NextResponse.json({ error: 'Module and targetGroupIds are required' }, { status: 400 });
     }
 
-    // Role check
-    const sender = getProfileById(senderProfileId || '11111111-1111-1111-1111-111111111111');
-    const role: UserRole = sender ? sender.role : 'superadmin';
+    // Role check: validated strictly from database profile
+    const role: UserRole = sender.role;
 
     if (module === 'devotional' && role !== 'superadmin' && role !== 'liturgi') {
-      return NextResponse.json({ error: 'Akses ditolak: Anda tidak memiliki wewenang siaran renungan.' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Akses ditolak: Anda tidak memiliki wewenang siaran renungan.' },
+        { status: 403 }
+      );
     }
 
     if (module === 'birthday' && role !== 'superadmin' && role !== 'logistik') {
-      return NextResponse.json({ error: 'Akses ditolak: Anda tidak memiliki wewenang siaran ulang tahun.' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Akses ditolak: Anda tidak memiliki wewenang siaran ulang tahun.' },
+        { status: 403 }
+      );
     }
 
     const lineClient = new LineApiClient();

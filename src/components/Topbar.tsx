@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function Topbar() {
-  const { currentRole, currentUser, switchUser, logout } = useRole();
+  const { currentRole, currentUser, logout, loading } = useRole();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -85,29 +85,8 @@ export default function Topbar() {
         </div>
       </div>
 
-      {/* Right: Switch Role & User Profile */}
+      {/* Right: Notifications & User Profile */}
       <div className="flex items-center space-x-4">
-        {/* Role Switcher */}
-        <div className="hidden lg:flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-lg p-1">
-          <span className="text-[11px] font-medium text-slate-500 px-1.5">Role:</span>
-          {(['superadmin', 'liturgi', 'logistik'] as UserRole[]).map((role) => {
-            const isActive = currentRole === role;
-            return (
-              <button
-                key={role}
-                onClick={() => switchUser(role)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                  isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                }`}
-              >
-                {role === 'superadmin' ? 'Superadmin' : role === 'liturgi' ? 'Liturgi' : 'Logistik'}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Notifications Icon */}
         <div className="relative">
           <button
@@ -148,13 +127,15 @@ export default function Topbar() {
         {/* User Card */}
         <div className="flex items-center space-x-2.5 pl-2 border-l border-slate-200">
           <div className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs">
-            {currentUser.name.charAt(0)}
+            {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : '?'}
           </div>
           <div className="text-left">
-            <p className="text-xs font-semibold text-slate-800 leading-tight">{currentUser.name}</p>
+            <p className="text-xs font-semibold text-slate-800 leading-tight">
+              {currentUser?.name || (loading ? 'Memuat profil...' : 'Tamu')}
+            </p>
             <span
               className={`inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.2 rounded border font-medium ${
-                roleConfigs[currentRole]?.badgeColor || ''
+                roleConfigs[currentRole]?.badgeColor || 'bg-slate-100 text-slate-600'
               }`}
             >
               <CurrentRoleIcon className="w-2.5 h-2.5" />

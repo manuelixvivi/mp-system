@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProfiles, createProfile, addActivityLog } from '@/lib/db/store';
+import { getProfiles, createProfile, deleteProfile, getProfileByEmail, addActivityLog } from '@/lib/db/store';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  // Check authorization
+async function getAuthenticatedSuperadmin(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
-  const user = token ? await verifySessionToken(token) : null;
+  if (!token) return null;
 
-  if (!user || user.role !== 'superadmin') {
+  const sessionUser = await verifySessionToken(token);
+  if (!sessionUser || !sessionUser.email) return null;
+
+  // Confirm directly against database profile
+  const dbUser = getProfileByEmail(sessionUser.email);
+  if (!dbUser || !dbUser.is_active || dbUser.role !== 'superadmin') {
+    return null;
+  }
+
+  return dbUser;
+}
+
+export async function GET(req: NextRequest) {
+  const superadmin = await getAuthenticatedSuperadmin(req);
+  if (!superadmin) {
     return NextResponse.json(
       { error: 'Akses ditolak: Hanya Superadmin yang berhak melihat daftar akun.' },
       { status: 403 }
@@ -22,12 +35,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  const user = token ? await verifySessionToken(token) : null;
-
-  if (!user || user.role !== 'superadmin') {
+  const superadmin = await getAuthenticatedSuperadmin(req);
+  if (!superadmin) {
     return NextResponse.json(
-      { error: 'Akses ditolak: Hanya Superadmin yang berhak membuat akun baru.' },
+      { error: 'Akses ditolak: Hanya Superadmin yang berhak mendaftarkan akun baru.' },
       { status: 403 }
     );
   }
@@ -38,35 +49,111 @@ export async function POST(req: NextRequest) {
 
     if (!name || !email || !role || !password) {
       return NextResponse.json(
-        { error: 'Nama, email, role, dan password wajib diisi.' },
+        { error: 'Nama lengkap, email, role, dan password wajib diisi.' },
         { status: 400 }
       );
     }
 
-    // Creates profile with bcrypt hashed password
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+      return NextResponse.json(
+        { error: 'Format email tidak valid.' },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Password harus minimal 6 karakter demi keamanan sistem.' },
+        { status: 400 }
+      );
+    }
+
+    const validRoles = ['superadmin', 'liturgi', 'logistik'];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json(
+        { error: 'Role yang dipilih tidak valid.' },
+        { status: 400 }
+      );
+    }
+
+    // Creates profile with bcrypt hashed password (10 salt rounds)
     const newProfile = createProfile(
       {
-        name,
-        email,
+        name: name.trim(),
+        email: trimmedEmail,
         role,
-        line_user_id,
+        line_user_id: line_user_id?.trim() || '',
         is_active: true,
       },
       password
     );
 
     addActivityLog({
-      user_id: user.id,
-      user_name: user.name,
+      user_id: superadmin.id,
+      user_name: superadmin.name,
       actor_type: 'user',
       action: 'user_account_created',
       entity_type: 'profile',
       entity_id: newProfile.id,
-      details: { email: newProfile.email, role: newProfile.role },
+      details: {
+        created_user_email: newProfile.email,
+        assigned_role: newProfile.role,
+        creator: superadmin.email,
+      },
     });
 
-    return NextResponse.json({ success: true, user: newProfile });
+    return NextResponse.json({
+      success: true,
+      message: `Akun ${newProfile.name} (${newProfile.role}) berhasil didaftarkan.`,
+      user: newProfile,
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message || 'Gagal membuat akun.' }, { status: 400 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const superadmin = await getAuthenticatedSuperadmin(req);
+  if (!superadmin) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Superadmin yang berhak menghapus akun.' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('id');
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID wajib disertakan.' }, { status: 400 });
+    }
+
+    if (userId === superadmin.id) {
+      return NextResponse.json(
+        { error: 'Anda tidak dapat menghapus akun Anda sendiri.' },
+        { status: 400 }
+      );
+    }
+
+    const deleted = deleteProfile(userId);
+    if (!deleted) {
+      return NextResponse.json({ error: 'Akun tidak ditemukan.' }, { status: 404 });
+    }
+
+    addActivityLog({
+      user_id: superadmin.id,
+      user_name: superadmin.name,
+      actor_type: 'user',
+      action: 'user_account_deleted',
+      entity_type: 'profile',
+      entity_id: userId,
+      details: { deleted_by: superadmin.email },
+    });
+
+    return NextResponse.json({ success: true, message: 'Akun berhasil dihapus.' });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Gagal menghapus akun.' }, { status: 500 });
   }
 }

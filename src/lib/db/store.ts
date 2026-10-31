@@ -153,12 +153,20 @@ export function createProfile(
   plainPassword?: string
 ): SafeProfile {
   const db = loadDatabase();
+  const normalizedEmail = profile.email.trim().toLowerCase();
+
+  const existing = db.profiles.find((p) => p.email.trim().toLowerCase() === normalizedEmail);
+  if (existing) {
+    throw new Error(`Email "${profile.email}" sudah terdaftar dalam sistem.`);
+  }
+
   const passwordHash = plainPassword
     ? bcrypt.hashSync(plainPassword, 10)
     : profile.password_hash || bcrypt.hashSync('MPCommunity2026!', 10);
 
   const newProfile: Profile = {
     ...profile,
+    email: normalizedEmail,
     password_hash: passwordHash,
     id: `prof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     created_at: new Date().toISOString(),
@@ -167,6 +175,17 @@ export function createProfile(
   db.profiles.push(newProfile);
   saveDatabase(db);
   return sanitizeProfile(newProfile);
+}
+
+export function deleteProfile(id: string): boolean {
+  const db = loadDatabase();
+  const initialLen = db.profiles.length;
+  db.profiles = db.profiles.filter((p) => p.id !== id);
+  if (db.profiles.length !== initialLen) {
+    saveDatabase(db);
+    return true;
+  }
+  return false;
 }
 
 export function updateProfile(id: string, updates: Partial<Profile>, newPlainPassword?: string): SafeProfile | null {

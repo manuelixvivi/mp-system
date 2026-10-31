@@ -1,87 +1,74 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserRole, SafeProfile } from '@/types';
 
 interface RoleContextType {
   currentRole: UserRole;
-  setCurrentRole: (role: UserRole) => void;
   currentUser: SafeProfile;
-  switchUser: (role: UserRole) => void;
   logout: () => Promise<void>;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
-const DEFAULT_USERS: Record<UserRole, SafeProfile> = {
-  superadmin: {
-    id: '11111111-1111-1111-1111-111111111111',
-    email: 'superadmin@mpcommunity.org',
-    name: 'Fr. Michael Tan (Superadmin)',
-    role: 'superadmin',
-    line_user_id: 'U_SUPERADMIN_001',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  liturgi: {
-    id: '22222222-2222-2222-2222-222222222222',
-    email: 'liturgi@mpcommunity.org',
-    name: 'Sr. Clara Bernadeth (Tim Liturgi)',
-    role: 'liturgi',
-    line_user_id: 'U_LITURGI_002',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  logistik: {
-    id: '33333333-3333-3333-3333-333333333333',
-    email: 'logistik@mpcommunity.org',
-    name: 'Antonius Budi (Tim Logistik)',
-    role: 'logistik',
-    line_user_id: 'U_LOGISTIK_003',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
+// Fallback skeleton while session loads
+const GUEST_PROFILE: SafeProfile = {
+  id: '',
+  email: '',
+  name: 'Memuat...',
+  role: 'liturgi',
+  is_active: false,
+  created_at: '',
 };
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [currentRole, setCurrentRole] = useState<UserRole>('superadmin');
-  const [currentUser, setCurrentUser] = useState<SafeProfile>(DEFAULT_USERS.superadmin);
+  const [currentUser, setCurrentUser] = useState<SafeProfile>(GUEST_PROFILE);
+  const [currentRole, setCurrentRole] = useState<UserRole>('liturgi');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Fetch authenticated user from session
-    async function loadAuth() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user) {
-            setCurrentUser(data.user);
-            setCurrentRole(data.user.role);
-          }
-        }
-      } catch (err) {
-        // Fallback
-      } finally {
-        setLoading(false);
+  const fetchSession = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+
+      if (!res.ok) {
+        // Not authenticated -> redirect to login
+        router.push('/login');
+        return;
       }
+
+      const data = await res.json();
+      if (data?.user?.email && data?.user?.role) {
+        // Role is strictly derived from the authenticated database profile
+        setCurrentUser(data.user);
+        setCurrentRole(data.user.role);
+      } else {
+        router.push('/login');
+      }
+    } catch (err) {
+      console.error('Session load failed:', err);
+      router.push('/login');
+    } finally {
+      setLoading(false);
     }
+  }, [router]);
 
-    loadAuth();
-  }, []);
-
-  const switchUser = (role: UserRole) => {
-    setCurrentRole(role);
-    setCurrentUser(DEFAULT_USERS[role]);
-  };
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
 
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } finally {
+      setCurrentUser(GUEST_PROFILE);
       router.push('/login');
       router.refresh();
     }
@@ -91,11 +78,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     <RoleContext.Provider
       value={{
         currentRole,
-        setCurrentRole: switchUser,
         currentUser,
-        switchUser,
         logout,
         loading,
+        refreshUser: fetchSession,
       }}
     >
       {children}

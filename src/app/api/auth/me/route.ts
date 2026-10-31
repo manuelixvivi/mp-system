@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
+import { getProfileByEmail } from '@/lib/db/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,19 +10,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  const user = await verifySessionToken(token);
-  if (!user) {
+  const sessionUser = await verifySessionToken(token);
+  if (!sessionUser || !sessionUser.email) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  // Returns safe profile with no password hash
+  // Strictly validate live profile and role directly from database
+  const dbUser = getProfileByEmail(sessionUser.email);
+  if (!dbUser || !dbUser.is_active) {
+    return NextResponse.json({ user: null }, { status: 401 });
+  }
+
+  // Returns safe profile with live role validated strictly from database
   return NextResponse.json({
     user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      line_user_id: user.line_user_id,
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name,
+      role: dbUser.role,
+      line_user_id: dbUser.line_user_id,
+      is_active: dbUser.is_active,
     },
   });
 }
