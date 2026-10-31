@@ -232,6 +232,17 @@ export function updateLineGroup(id: string, updates: Partial<LineGroup>): LineGr
   return db.line_groups[idx];
 }
 
+export function deleteLineGroup(id: string): boolean {
+  const db = loadDatabase();
+  const initialLen = db.line_groups.length;
+  db.line_groups = db.line_groups.filter((g) => g.id !== id && g.group_id !== id);
+  if (db.line_groups.length !== initialLen) {
+    saveDatabase(db);
+    return true;
+  }
+  return false;
+}
+
 export function createLineGroup(group: Omit<LineGroup, 'id' | 'created_at'>): LineGroup {
   const db = loadDatabase();
   const newGroup: LineGroup = {

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getLineGroups,
+  getLineGroupById,
   createLineGroup,
   updateLineGroup,
+  deleteLineGroup,
   getProfileByEmail,
   addActivityLog,
 } from '@/lib/db/store';
@@ -103,5 +105,51 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ success: true, group: updated });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const superadmin = await getAuthorizedSuperadmin(req);
+  if (!superadmin) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Hanya Superadmin yang berwenang menghapus grup LINE.' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Group ID wajib disertakan.' }, { status: 400 });
+    }
+
+    const group = getLineGroupById(id);
+    const deleted = deleteLineGroup(id);
+    if (!deleted) {
+      return NextResponse.json({ error: 'Grup LINE tidak ditemukan.' }, { status: 404 });
+    }
+
+    addActivityLog({
+      user_id: superadmin.id,
+      user_name: superadmin.name,
+      actor_type: 'user',
+      action: 'group_deleted',
+      entity_type: 'line_group',
+      entity_id: id,
+      details: {
+        group_name: group?.group_name || id,
+        group_id: group?.group_id,
+        deleted_by: superadmin.email,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Grup LINE "${group?.group_name || id}" berhasil dihapus dari sistem.`,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Gagal menghapus grup.' }, { status: 500 });
   }
 }
