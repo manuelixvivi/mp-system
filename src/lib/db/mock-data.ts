@@ -18,6 +18,7 @@ export const INITIAL_PROFILES: Profile[] = [
     email: 'superadmin@mpcommunity.org',
     name: 'Fr. Michael Tan',
     role: 'superadmin',
+    password_hash: '$2b$10$l5lAS3KM5mQ/ePs9AAs5rO5wf49XQFxTKoXNoY8vA8nITdq8J2p7C', // SuperAdminMP2026!
     line_user_id: 'U_SUPERADMIN_001',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -27,6 +28,7 @@ export const INITIAL_PROFILES: Profile[] = [
     email: 'liturgi@mpcommunity.org',
     name: 'Sr. Clara Bernadeth',
     role: 'liturgi',
+    password_hash: '$2b$10$DOx/wRdV0aWTdEBhfPMnEuy5T9UWxcwk0oA3r8qwA1xEsV/cYIqdK', // LiturgiMP2026!
     line_user_id: 'U_LITURGI_002',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -36,6 +38,7 @@ export const INITIAL_PROFILES: Profile[] = [
     email: 'logistik@mpcommunity.org',
     name: 'Antonius Budi',
     role: 'logistik',
+    password_hash: '$2b$10$fX0DYHnQRKNhdZc2HtWbsefmbw5JQrWdYX9mGb.9.L6qjy4S/TbYO', // LogistikMP2026!
     line_user_id: 'U_LOGISTIK_003',
     is_active: true,
     created_at: new Date().toISOString(),

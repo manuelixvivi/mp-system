@@ -1,16 +1,19 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserRole, Profile } from '@/types';
+import { useRouter } from 'next/navigation';
+import { UserRole, SafeProfile } from '@/types';
 
 interface RoleContextType {
   currentRole: UserRole;
   setCurrentRole: (role: UserRole) => void;
-  currentUser: Profile;
+  currentUser: SafeProfile;
   switchUser: (role: UserRole) => void;
+  logout: () => Promise<void>;
+  loading: boolean;
 }
 
-const DEFAULT_USERS: Record<UserRole, Profile> = {
+const DEFAULT_USERS: Record<UserRole, SafeProfile> = {
   superadmin: {
     id: '11111111-1111-1111-1111-111111111111',
     email: 'superadmin@mpcommunity.org',
@@ -43,25 +46,58 @@ const DEFAULT_USERS: Record<UserRole, Profile> = {
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [currentRole, setCurrentRole] = useState<UserRole>('superadmin');
-  const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_USERS.superadmin);
+  const [currentUser, setCurrentUser] = useState<SafeProfile>(DEFAULT_USERS.superadmin);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedRole = localStorage.getItem('mp_active_role') as UserRole;
-    if (savedRole && DEFAULT_USERS[savedRole]) {
-      setCurrentRole(savedRole);
-      setCurrentUser(DEFAULT_USERS[savedRole]);
+    // Fetch authenticated user from session
+    async function loadAuth() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setCurrentUser(data.user);
+            setCurrentRole(data.user.role);
+          }
+        }
+      } catch (err) {
+        // Fallback
+      } finally {
+        setLoading(false);
+      }
     }
+
+    loadAuth();
   }, []);
 
   const switchUser = (role: UserRole) => {
     setCurrentRole(role);
     setCurrentUser(DEFAULT_USERS[role]);
-    localStorage.setItem('mp_active_role', role);
+  };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
   };
 
   return (
-    <RoleContext.Provider value={{ currentRole, setCurrentRole: switchUser, currentUser, switchUser }}>
+    <RoleContext.Provider
+      value={{
+        currentRole,
+        setCurrentRole: switchUser,
+        currentUser,
+        switchUser,
+        logout,
+        loading,
+      }}
+    >
       {children}
     </RoleContext.Provider>
   );

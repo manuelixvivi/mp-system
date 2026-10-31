@@ -3,12 +3,16 @@
 -- Platform: Supabase PostgreSQL (Asia/Jakarta WIB)
 -- ====================================================================
 
--- 1. PROFILES
-INSERT INTO profiles (id, email, name, role, line_user_id, is_active) VALUES
-('11111111-1111-1111-1111-111111111111', 'superadmin@mpcommunity.org', 'Fr. Michael Tan (Superadmin)', 'superadmin', 'U_SUPERADMIN_001', true),
-('22222222-2222-2222-2222-222222222222', 'liturgi@mpcommunity.org', 'Sr. Clara Bernadeth (Tim Liturgi)', 'liturgi', 'U_LITURGI_002', true),
-('33333333-3333-3333-3333-333333333333', 'logistik@mpcommunity.org', 'Antonius Budi (Tim Logistik)', 'logistik', 'U_LOGISTIK_003', true)
-ON CONFLICT (id) DO NOTHING;
+-- 1. PROFILES (Default passwords are bcrypt hashed)
+-- Superadmin: SuperAdminMP2026!
+-- Liturgi: LiturgiMP2026!
+-- Logistik: LogistikMP2026!
+INSERT INTO profiles (id, email, name, role, password_hash, line_user_id, is_active) VALUES
+('11111111-1111-1111-1111-111111111111', 'superadmin@mpcommunity.org', 'Fr. Michael Tan (Superadmin)', 'superadmin', '$2b$10$l5lAS3KM5mQ/ePs9AAs5rO5wf49XQFxTKoXNoY8vA8nITdq8J2p7C', 'U_SUPERADMIN_001', true),
+('22222222-2222-2222-2222-222222222222', 'liturgi@mpcommunity.org', 'Sr. Clara Bernadeth (Tim Liturgi)', 'liturgi', '$2b$10$DOx/wRdV0aWTdEBhfPMnEuy5T9UWxcwk0oA3r8qwA1xEsV/cYIqdK', 'U_LITURGI_002', true),
+('33333333-3333-3333-3333-333333333333', 'logistik@mpcommunity.org', 'Antonius Budi (Tim Logistik)', 'logistik', '$2b$10$fX0DYHnQRKNhdZc2HtWbsefmbw5JQrWdYX9mGb.9.L6qjy4S/TbYO', 'U_LOGISTIK_003', true)
+ON CONFLICT (id) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash;
 
 -- 2. LINE BOTS
 INSERT INTO line_bots (id, name, channel_id, channel_secret, channel_access_token, is_active, status, webhook_url) VALUES

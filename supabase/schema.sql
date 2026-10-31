@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('superadmin', 'liturgi', 'logistik')),
+    password_hash VARCHAR(255) NOT NULL,
     line_user_id VARCHAR(100) UNIQUE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

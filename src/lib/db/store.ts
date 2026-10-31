@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 import {
   Profile,
+  SafeProfile,
   LineBot,
   LineGroup,
   Member,
@@ -91,38 +93,94 @@ function saveDatabase(data: DatabaseData) {
   }
 }
 
+export function sanitizeProfile(profile: Profile): SafeProfile {
+  const { password_hash, ...safe } = profile;
+  return safe;
+}
+
 // Profiles
-export function getProfiles(): Profile[] {
-  return loadDatabase().profiles;
+export function getProfiles(): SafeProfile[] {
+  return loadDatabase().profiles.map(sanitizeProfile);
 }
 
-export function getProfileById(id: string): Profile | undefined {
-  return loadDatabase().profiles.find((p) => p.id === id);
+export function getProfileById(id: string): SafeProfile | undefined {
+  const profile = loadDatabase().profiles.find((p) => p.id === id);
+  return profile ? sanitizeProfile(profile) : undefined;
 }
 
-export function getProfileByLineUserId(lineUserId: string): Profile | undefined {
-  return loadDatabase().profiles.find((p) => p.line_user_id === lineUserId && p.is_active);
+export function getProfileByEmail(email: string): SafeProfile | undefined {
+  const profile = loadDatabase().profiles.find(
+    (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active
+  );
+  return profile ? sanitizeProfile(profile) : undefined;
 }
 
-export function createProfile(profile: Omit<Profile, 'id' | 'created_at'>): Profile {
+export function getProfileByLineUserId(lineUserId: string): SafeProfile | undefined {
+  const profile = loadDatabase().profiles.find((p) => p.line_user_id === lineUserId && p.is_active);
+  return profile ? sanitizeProfile(profile) : undefined;
+}
+
+/**
+ * Validates user credentials securely against bcrypt hash.
+ * Password & Hash are NEVER logged to console or returned to callers.
+ */
+export async function validateUserPassword(
+  email: string,
+  plainPassword: string
+): Promise<SafeProfile | null> {
+  if (!email || !plainPassword) return null;
+
   const db = loadDatabase();
+  const user = db.profiles.find(
+    (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active
+  );
+
+  if (!user || !user.password_hash) {
+    return null;
+  }
+
+  try {
+    const isValid = await bcrypt.compare(plainPassword, user.password_hash);
+    if (!isValid) return null;
+    return sanitizeProfile(user);
+  } catch (err) {
+    return null;
+  }
+}
+
+export function createProfile(
+  profile: Omit<Profile, 'id' | 'created_at'>,
+  plainPassword?: string
+): SafeProfile {
+  const db = loadDatabase();
+  const passwordHash = plainPassword
+    ? bcrypt.hashSync(plainPassword, 10)
+    : profile.password_hash || bcrypt.hashSync('MPCommunity2026!', 10);
+
   const newProfile: Profile = {
     ...profile,
+    password_hash: passwordHash,
     id: `prof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     created_at: new Date().toISOString(),
   };
+
   db.profiles.push(newProfile);
   saveDatabase(db);
-  return newProfile;
+  return sanitizeProfile(newProfile);
 }
 
-export function updateProfile(id: string, updates: Partial<Profile>): Profile | null {
+export function updateProfile(id: string, updates: Partial<Profile>, newPlainPassword?: string): SafeProfile | null {
   const db = loadDatabase();
   const index = db.profiles.findIndex((p) => p.id === id);
   if (index === -1) return null;
+
+  if (newPlainPassword) {
+    updates.password_hash = bcrypt.hashSync(newPlainPassword, 10);
+  }
+
   db.profiles[index] = { ...db.profiles[index], ...updates, updated_at: new Date().toISOString() };
   saveDatabase(db);
-  return db.profiles[index];
+  return sanitizeProfile(db.profiles[index]);
 }
 
 // Line Bot

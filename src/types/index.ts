@@ -7,11 +7,14 @@ export interface Profile {
   email: string;
   name: string;
   role: UserRole;
+  password_hash?: string; // Securely hashed with bcrypt - NEVER exposed to frontend
   line_user_id?: string;
   is_active: boolean;
   created_at: string;
   updated_at?: string;
 }
+
+export type SafeProfile = Omit<Profile, 'password_hash'>;
 
 export interface LineBot {
   id: string;

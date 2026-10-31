@@ -12,17 +12,18 @@ import {
   Shield,
   BookOpen,
   Package,
+  LogOut,
 } from 'lucide-react';
 
 export default function Topbar() {
-  const { currentRole, currentUser, switchUser } = useRole();
+  const { currentRole, currentUser, switchUser, logout } = useRole();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      // Format in Asia/Jakarta
       const timeStr = new Intl.DateTimeFormat('id-ID', {
         timeZone: 'Asia/Jakarta',
         hour: '2-digit',
@@ -56,7 +57,12 @@ export default function Topbar() {
     },
   };
 
-  const CurrentRoleIcon = roleConfigs[currentRole].icon;
+  const CurrentRoleIcon = roleConfigs[currentRole]?.icon || Shield;
+
+  const handleLogoutClick = async () => {
+    setLoggingOut(true);
+    await logout();
+  };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20">
@@ -81,9 +87,9 @@ export default function Topbar() {
 
       {/* Right: Switch Role & User Profile */}
       <div className="flex items-center space-x-4">
-        {/* Role Switcher (For Demo & Multi-Role Testing) */}
-        <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-lg p-1">
-          <span className="text-[11px] font-medium text-slate-500 px-1.5">Role Pengguna:</span>
+        {/* Role Switcher */}
+        <div className="hidden lg:flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-lg p-1">
+          <span className="text-[11px] font-medium text-slate-500 px-1.5">Role:</span>
           {(['superadmin', 'liturgi', 'logistik'] as UserRole[]).map((role) => {
             const isActive = currentRole === role;
             return (
@@ -148,13 +154,23 @@ export default function Topbar() {
             <p className="text-xs font-semibold text-slate-800 leading-tight">{currentUser.name}</p>
             <span
               className={`inline-flex items-center space-x-1 text-[10px] px-1.5 py-0.2 rounded border font-medium ${
-                roleConfigs[currentRole].badgeColor
+                roleConfigs[currentRole]?.badgeColor || ''
               }`}
             >
               <CurrentRoleIcon className="w-2.5 h-2.5" />
-              <span>{roleConfigs[currentRole].title}</span>
+              <span>{roleConfigs[currentRole]?.title || currentRole}</span>
             </span>
           </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogoutClick}
+            disabled={loggingOut}
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+            title="Keluar (Logout)"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
