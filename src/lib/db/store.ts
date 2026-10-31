@@ -58,21 +58,37 @@ export async function syncFromSupabase(): Promise<void> {
   isSyncingSupabase = true;
 
   try {
-    const [profRes, grpRes, memRes] = await Promise.all([
+    const [profRes, grpRes, memRes, botRes, devRes, setRes, logRes] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('line_groups').select('*'),
-      supabase.from('members').select('*'),
+      supabase.from('line_groups').select('*').order('created_at', { ascending: false }),
+      supabase.from('members').select('*').order('full_name', { ascending: true }),
+      supabase.from('line_bots').select('*').limit(1).maybeSingle(),
+      supabase.from('devotionals').select('*').order('devotional_date', { ascending: false }),
+      supabase.from('automation_settings').select('*').limit(1).maybeSingle(),
+      supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
     ]);
 
     const db = inMemoryDb || loadDatabase();
-    if (profRes.data && profRes.data.length > 0) {
+    if (!profRes.error && Array.isArray(profRes.data)) {
       db.profiles = profRes.data as Profile[];
     }
-    if (grpRes.data && grpRes.data.length > 0) {
+    if (!grpRes.error && Array.isArray(grpRes.data)) {
       db.line_groups = grpRes.data as LineGroup[];
     }
-    if (memRes.data && memRes.data.length > 0) {
+    if (!memRes.error && Array.isArray(memRes.data)) {
       db.members = memRes.data as Member[];
+    }
+    if (!botRes.error && botRes.data) {
+      db.line_bot = botRes.data as LineBot;
+    }
+    if (!devRes.error && Array.isArray(devRes.data)) {
+      db.devotionals = devRes.data as Devotional[];
+    }
+    if (!setRes.error && setRes.data) {
+      db.settings = { ...db.settings, ...setRes.data };
+    }
+    if (!logRes.error && Array.isArray(logRes.data)) {
+      db.logs = logRes.data as ActivityLog[];
     }
     saveDatabase(db);
   } catch (err) {
@@ -148,7 +164,7 @@ export async function getProfiles(): Promise<SafeProfile[]> {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const db = inMemoryDb || loadDatabase();
         db.profiles = data as Profile[];
         saveDatabase(db);
@@ -677,189 +693,431 @@ export async function updateProfile(
 }
 
 // Line Bot
-export function getLineBot(): LineBot {
-  return loadDatabase().line_bot;
+export async function getLineBot(): Promise<LineBot> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('line_bots')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        const db = inMemoryDb || loadDatabase();
+        db.line_bot = data as LineBot;
+        saveDatabase(db);
+        return data as LineBot;
+      }
+    } catch (err) {
+      console.warn('Supabase getLineBot warning:', err);
+    }
+  }
+  return (inMemoryDb || loadDatabase()).line_bot;
 }
 
-export function updateLineBot(updates: Partial<LineBot>): LineBot {
+export function getLineBotSync(): LineBot {
+  return (inMemoryDb || loadDatabase()).line_bot;
+}
+
+export async function updateLineBot(updates: Partial<LineBot>): Promise<LineBot> {
   const db = loadDatabase();
   db.line_bot = { ...db.line_bot, ...updates, updated_at: new Date().toISOString() };
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data } = await supabase
+        .from('line_bots')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', db.line_bot.id)
+        .select()
+        .maybeSingle();
+
+      if (data) {
+        db.line_bot = data as LineBot;
+        saveDatabase(db);
+      }
+    } catch (err) {
+      console.warn('Supabase updateLineBot error:', err);
+    }
+  }
+
   return db.line_bot;
 }
 
-// Line Groups
-export function getLineGroups(): LineGroup[] {
-  return loadDatabase().line_groups;
+// Line Groups - Live from Supabase if configured
+export async function getLineGroups(): Promise<LineGroup[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('line_groups')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.line_groups = data as LineGroup[];
+        saveDatabase(db);
+        return data as LineGroup[];
+      }
+    } catch (err) {
+      console.warn('Supabase getLineGroups warning:', err);
+    }
+  }
+  return (inMemoryDb || loadDatabase()).line_groups;
 }
 
-export function getLineGroupById(id: string): LineGroup | undefined {
-  return loadDatabase().line_groups.find((g) => g.id === id || g.group_id === id);
+export async function getLineGroupById(id: string): Promise<LineGroup | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('line_groups')
+        .select('*')
+        .or(`id.eq.${id},group_id.eq.${id}`)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as LineGroup;
+      }
+    } catch (err) {}
+  }
+  return (inMemoryDb || loadDatabase()).line_groups.find((g) => g.id === id || g.group_id === id);
 }
 
-export function updateLineGroup(id: string, updates: Partial<LineGroup>): LineGroup | null {
+export async function updateLineGroup(id: string, updates: Partial<LineGroup>): Promise<LineGroup | null> {
+  const now = new Date().toISOString();
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('line_groups')
+        .update({ ...updates, updated_at: now })
+        .or(`id.eq.${id},group_id.eq.${id}`)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        const db = inMemoryDb || loadDatabase();
+        const idx = db.line_groups.findIndex((g) => g.id === id || g.group_id === id);
+        if (idx !== -1) db.line_groups[idx] = data as LineGroup;
+        else db.line_groups.unshift(data as LineGroup);
+        saveDatabase(db);
+        return data as LineGroup;
+      }
+    } catch (err) {
+      console.warn('Supabase updateLineGroup error:', err);
+    }
+  }
+
   const db = loadDatabase();
   const idx = db.line_groups.findIndex((g) => g.id === id || g.group_id === id);
   if (idx === -1) return null;
-  db.line_groups[idx] = { ...db.line_groups[idx], ...updates, updated_at: new Date().toISOString() };
+  db.line_groups[idx] = { ...db.line_groups[idx], ...updates, updated_at: now };
   saveDatabase(db);
   return db.line_groups[idx];
 }
 
-export function deleteLineGroup(id: string): boolean {
-  const db = loadDatabase();
-  const initialLen = db.line_groups.length;
-  db.line_groups = db.line_groups.filter((g) => g.id !== id && g.group_id !== id);
-  if (db.line_groups.length !== initialLen) {
-    saveDatabase(db);
-    if (isSupabaseConfigured && supabase) {
-      supabase.from('line_groups').delete().eq('id', id).then();
+export async function deleteLineGroup(id: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('line_groups')
+        .delete()
+        .or(`id.eq.${id},group_id.eq.${id}`);
+
+      if (error) {
+        console.error('Supabase deleteLineGroup error:', error.message);
+        return false;
+      }
+    } catch (err) {
+      console.error('Supabase deleteLineGroup exception:', err);
+      return false;
     }
-    return true;
   }
-  return false;
+
+  const db = loadDatabase();
+  db.line_groups = db.line_groups.filter((g) => g.id !== id && g.group_id !== id);
+  saveDatabase(db);
+  return true;
 }
 
-export function createLineGroup(group: Omit<LineGroup, 'id' | 'created_at'>): LineGroup {
-  const db = loadDatabase();
+export async function createLineGroup(group: Omit<LineGroup, 'id' | 'created_at'>): Promise<LineGroup> {
   const newGroup: LineGroup = {
     ...group,
     id: randomUUID(),
     created_at: new Date().toISOString(),
   };
-  db.line_groups.push(newGroup);
-  saveDatabase(db);
+
   if (isSupabaseConfigured && supabase) {
-    supabase.from('line_groups').insert([newGroup]).then();
+    try {
+      const { data, error } = await supabase
+        .from('line_groups')
+        .insert([newGroup])
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.error('Supabase createLineGroup error:', error.message);
+        throw new Error(`Gagal menyimpan grup ke Supabase: ${error.message}`);
+      }
+      if (data) {
+        const db = inMemoryDb || loadDatabase();
+        db.line_groups.unshift(data as LineGroup);
+        saveDatabase(db);
+        return data as LineGroup;
+      }
+    } catch (err: any) {
+      console.error('Supabase createLineGroup exception:', err);
+      throw err;
+    }
   }
+
+  const db = loadDatabase();
+  db.line_groups.unshift(newGroup);
+  saveDatabase(db);
   return newGroup;
 }
 
-// Members
-export function getMembers(): Member[] {
-  return loadDatabase().members;
+// Members - Live from Supabase if configured
+export async function getMembers(): Promise<Member[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .order('full_name', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.members = data as Member[];
+        saveDatabase(db);
+        return data as Member[];
+      }
+    } catch (err) {
+      console.warn('Supabase getMembers warning:', err);
+    }
+  }
+  return (inMemoryDb || loadDatabase()).members;
 }
 
-export function getMemberById(id: string): Member | undefined {
-  return loadDatabase().members.find((m) => m.id === id);
+export async function getMemberById(id: string): Promise<Member | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as Member;
+      }
+    } catch (err) {}
+  }
+  return (inMemoryDb || loadDatabase()).members.find((m) => m.id === id);
 }
 
-export function createMember(member: Omit<Member, 'id' | 'created_at'>): Member {
-  const db = loadDatabase();
+export async function createMember(member: Omit<Member, 'id' | 'created_at'>): Promise<Member> {
   const newMember: Member = {
     ...member,
     id: randomUUID(),
     created_at: new Date().toISOString(),
   };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .insert([newMember])
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        const db = inMemoryDb || loadDatabase();
+        db.members.push(data as Member);
+        saveDatabase(db);
+        return data as Member;
+      }
+      if (error) {
+        console.warn('Supabase member insert warning:', error.message);
+        // Fall back to base columns if newly added columns aren't in Supabase schema cache
+        const basePayload = {
+          id: newMember.id,
+          full_name: newMember.full_name,
+          birth_date: newMember.birth_date,
+          birth_month: newMember.birth_month,
+          birth_year: newMember.birth_year,
+          line_user_id: newMember.line_user_id,
+          line_display_name: newMember.line_display_name,
+          line_verification_status: newMember.line_verification_status,
+          status: newMember.status,
+          notes: newMember.notes,
+          created_at: newMember.created_at,
+        };
+        const { data: baseData, error: baseErr } = await supabase
+          .from('members')
+          .insert([basePayload])
+          .select()
+          .maybeSingle();
+
+        if (baseErr) {
+          throw new Error(`Gagal menyimpan anggota ke Supabase: ${baseErr.message}`);
+        }
+        if (baseData) {
+          const db = inMemoryDb || loadDatabase();
+          db.members.push(baseData as Member);
+          saveDatabase(db);
+          return baseData as Member;
+        }
+      }
+    } catch (err: any) {
+      console.error('Supabase createMember exception:', err);
+      throw err;
+    }
+  }
+
+  const db = loadDatabase();
   db.members.push(newMember);
   saveDatabase(db);
-  if (isSupabaseConfigured && supabase) {
-    supabase
-      .from('members')
-      .insert([newMember])
-      .then(({ error }) => {
-        if (error) {
-          console.warn('Supabase member insert warning:', error.message);
-          // If schema cache lacks newly added columns, fall back to base columns for Supabase
-          if (error.message.includes('schema cache') || error.message.includes('column')) {
-            const basePayload = {
-              id: newMember.id,
-              full_name: newMember.full_name,
-              birth_date: newMember.birth_date,
-              birth_month: newMember.birth_month,
-              birth_year: newMember.birth_year,
-              line_user_id: newMember.line_user_id,
-              line_display_name: newMember.line_display_name,
-              line_verification_status: newMember.line_verification_status,
-              status: newMember.status,
-              notes: newMember.notes,
-              created_at: newMember.created_at,
-            };
-            supabase.from('members').insert([basePayload]).then();
-          }
-        }
-      });
-  }
   return newMember;
 }
 
-export function updateMember(id: string, updates: Partial<Member>): Member | null {
+export async function updateMember(id: string, updates: Partial<Member>): Promise<Member | null> {
+  const now = new Date().toISOString();
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .update({ ...updates, updated_at: now })
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        const db = inMemoryDb || loadDatabase();
+        const idx = db.members.findIndex((m) => m.id === id);
+        if (idx !== -1) db.members[idx] = data as Member;
+        else db.members.push(data as Member);
+        saveDatabase(db);
+        return data as Member;
+      }
+    } catch (err) {
+      console.warn('Supabase updateMember error:', err);
+    }
+  }
+
   const db = loadDatabase();
   const idx = db.members.findIndex((m) => m.id === id);
   if (idx === -1) return null;
-  db.members[idx] = { ...db.members[idx], ...updates, updated_at: new Date().toISOString() };
+  db.members[idx] = { ...db.members[idx], ...updates, updated_at: now };
   saveDatabase(db);
-  if (isSupabaseConfigured && supabase) {
-    supabase.from('members').update(updates).eq('id', id).then(({ error }) => {
-      if (error) {
-        console.warn('Supabase updateMember warning:', error.message);
-      }
-    });
-  }
   return db.members[idx];
 }
 
-export function deleteMember(id: string): boolean {
-  const db = loadDatabase();
-  const initLen = db.members.length;
-  db.members = db.members.filter((m) => m.id !== id);
-  if (db.members.length !== initLen) {
-    saveDatabase(db);
-    if (isSupabaseConfigured && supabase) {
-      supabase.from('members').delete().eq('id', id).then(({ error }) => {
-        if (error) console.error('Supabase deleteMember error:', error.message);
-      });
+export async function deleteMember(id: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from('members').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase deleteMember error:', error.message);
+        return false;
+      }
+    } catch (err) {
+      console.error('Supabase deleteMember exception:', err);
+      return false;
     }
-    return true;
   }
-  return false;
+
+  const db = loadDatabase();
+  db.members = db.members.filter((m) => m.id !== id);
+  saveDatabase(db);
+  return true;
 }
 
-export function deleteMembersBulk(ids: string[]): { success: boolean; count: number; deletedIds: string[] } {
+export async function deleteMembersBulk(ids: string[]): Promise<{ success: boolean; count: number; deletedIds: string[] }> {
   if (!ids || ids.length === 0) {
     return { success: true, count: 0, deletedIds: [] };
   }
-  const db = loadDatabase();
-  const idSet = new Set(ids);
-  const initialLen = db.members.length;
-  const deletedMembers = db.members.filter((m) => idSet.has(m.id));
-  db.members = db.members.filter((m) => !idSet.has(m.id));
 
-  const count = initialLen - db.members.length;
-  if (count > 0) {
-    saveDatabase(db);
-    if (isSupabaseConfigured && supabase) {
-      supabase
-        .from('members')
-        .delete()
-        .in('id', ids)
-        .then(({ error }) => {
-          if (error) console.error('Supabase deleteMembersBulk error:', error.message);
-        });
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from('members').delete().in('id', ids);
+      if (error) {
+        console.error('Supabase deleteMembersBulk error:', error.message);
+      }
+    } catch (err) {
+      console.error('Supabase deleteMembersBulk exception:', err);
     }
   }
 
+  const db = loadDatabase();
+  const idSet = new Set(ids);
+  db.members = db.members.filter((m) => !idSet.has(m.id));
+  saveDatabase(db);
+
   return {
     success: true,
-    count,
-    deletedIds: deletedMembers.map((m) => m.id),
+    count: ids.length,
+    deletedIds: ids,
   };
 }
 
-// Devotionals
-export function getDevotionals(): Devotional[] {
-  return loadDatabase().devotionals;
+// Devotionals - Live from Supabase if configured
+export async function getDevotionals(): Promise<Devotional[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('devotionals')
+        .select('*')
+        .order('devotional_date', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.devotionals = data as Devotional[];
+        saveDatabase(db);
+        return data as Devotional[];
+      }
+    } catch (err) {
+      console.warn('Supabase getDevotionals warning:', err);
+    }
+  }
+  return (inMemoryDb || loadDatabase()).devotionals;
 }
 
-export function getDevotionalByDate(dateStr: string): Devotional | undefined {
-  return loadDatabase().devotionals.find((d) => d.devotional_date === dateStr);
+export async function getDevotionalByDate(dateStr: string): Promise<Devotional | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('devotionals')
+        .select('*')
+        .eq('devotional_date', dateStr)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as Devotional;
+      }
+    } catch (err) {}
+  }
+  return (inMemoryDb || loadDatabase()).devotionals.find((d) => d.devotional_date === dateStr);
 }
 
-export function getDevotionalById(id: string): Devotional | undefined {
-  return loadDatabase().devotionals.find((d) => d.id === id);
+export async function getDevotionalById(id: string): Promise<Devotional | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('devotionals')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as Devotional;
+      }
+    } catch (err) {}
+  }
+  return (inMemoryDb || loadDatabase()).devotionals.find((d) => d.id === id);
 }
 
-export function saveDevotional(devotional: Devotional): Devotional {
+export async function saveDevotional(devotional: Devotional): Promise<Devotional> {
   const db = loadDatabase();
   const idx = db.devotionals.findIndex((d) => d.id === devotional.id || d.devotional_date === devotional.devotional_date);
   if (idx !== -1) {
@@ -868,23 +1126,48 @@ export function saveDevotional(devotional: Devotional): Devotional {
     db.devotionals.unshift(devotional);
   }
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('devotionals').upsert([devotional]);
+    } catch (err) {
+      console.warn('Supabase saveDevotional error:', err);
+    }
+  }
   return devotional;
 }
 
-export function updateDevotionalAudit(
+export async function updateDevotionalAudit(
   id: string,
   auditStatus: DevotionalAuditStatus,
   auditorName: string,
   notes?: string
-): Devotional | null {
+): Promise<Devotional | null> {
   const db = loadDatabase();
   const idx = db.devotionals.findIndex((d) => d.id === id);
   if (idx === -1) return null;
 
+  const now = new Date().toISOString();
   db.devotionals[idx].audit_status = auditStatus;
   db.devotionals[idx].last_audited_by = auditorName;
-  db.devotionals[idx].last_audited_at = new Date().toISOString();
-  db.devotionals[idx].updated_at = new Date().toISOString();
+  db.devotionals[idx].last_audited_at = now;
+  db.devotionals[idx].updated_at = now;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('devotionals')
+        .update({
+          audit_status: auditStatus,
+          last_audited_by: auditorName,
+          last_audited_at: now,
+          updated_at: now,
+        })
+        .eq('id', id);
+    } catch (err) {
+      console.warn('Supabase updateDevotionalAudit error:', err);
+    }
+  }
 
   // Log action
   addActivityLog({
@@ -921,15 +1204,52 @@ export function saveDevotionalSource(source: DevotionalSource): DevotionalSource
   return source;
 }
 
-// Settings
-export function getAutomationSettings(): AutomationSettings {
-  return loadDatabase().settings;
+// Settings - Live from Supabase if configured
+export async function getAutomationSettings(): Promise<AutomationSettings> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('automation_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        const db = inMemoryDb || loadDatabase();
+        db.settings = { ...db.settings, ...data };
+        saveDatabase(db);
+        return db.settings;
+      }
+    } catch (err) {
+      console.warn('Supabase getAutomationSettings warning:', err);
+    }
+  }
+  return (inMemoryDb || loadDatabase()).settings;
 }
 
-export function updateAutomationSettings(updates: Partial<AutomationSettings>): AutomationSettings {
+export function getAutomationSettingsSync(): AutomationSettings {
+  return (inMemoryDb || loadDatabase()).settings;
+}
+
+export async function updateAutomationSettings(updates: Partial<AutomationSettings>): Promise<AutomationSettings> {
   const db = loadDatabase();
   db.settings = { ...db.settings, ...updates };
   saveDatabase(db);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const settingId = (db.settings as any).id;
+      const query = supabase.from('automation_settings').update(updates);
+      const { data } = settingId ? await query.eq('id', settingId).select().maybeSingle() : await query.neq('devotional_scraping_time', '').select().maybeSingle();
+
+      if (data) {
+        db.settings = { ...db.settings, ...data };
+        saveDatabase(db);
+      }
+    } catch (err) {
+      console.warn('Supabase updateAutomationSettings error:', err);
+    }
+  }
   return db.settings;
 }
 

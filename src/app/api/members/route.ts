@@ -23,7 +23,7 @@ async function getAuthorizedUser(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const members = getMembers();
+  const members = await getMembers();
   return NextResponse.json({ members });
 }
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       ? (instagram_account.trim().startsWith('@') ? instagram_account.trim() : `@${instagram_account.trim()}`)
       : undefined;
 
-    const newMember = createMember({
+    const newMember = await createMember({
       full_name: full_name.trim(),
       baptismal_name: baptismal_name?.trim() || undefined,
       birth_date: Number(birth_date),
@@ -133,7 +133,7 @@ export async function PUT(req: NextRequest) {
     if (updates.birth_year !== undefined) updates.birth_year = updates.birth_year ? Number(updates.birth_year) : undefined;
     if (updates.entry_year !== undefined) updates.entry_year = updates.entry_year ? Number(updates.entry_year) : undefined;
 
-    const updated = updateMember(id, updates);
+    const updated = await updateMember(id, updates);
     if (!updated) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
@@ -194,7 +194,7 @@ export async function DELETE(req: NextRequest) {
 
     if (idsToDelete.length === 1) {
       const singleId = idsToDelete[0];
-      const deleted = deleteMember(singleId);
+      const deleted = await deleteMember(singleId);
       if (!deleted) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
@@ -212,7 +212,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Bulk deletion
-    const result = deleteMembersBulk(idsToDelete);
+    const result = await deleteMembersBulk(idsToDelete);
 
     addActivityLog({
       user_id: user.id,

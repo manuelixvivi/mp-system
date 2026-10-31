@@ -1,4 +1,4 @@
-import { getLineBot } from '../db/store';
+import { getLineBotSync } from '../db/store';
 import { Member } from '@/types';
 
 export interface LineMentionee {
@@ -30,7 +30,7 @@ export class LineApiClient {
   private channelSecret: string;
 
   constructor() {
-    const bot = getLineBot();
+    const bot = getLineBotSync();
     this.channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || bot.channel_access_token;
     this.channelSecret = process.env.LINE_CHANNEL_SECRET || bot.channel_secret;
   }

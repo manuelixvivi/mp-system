@@ -20,7 +20,7 @@ async function getAuthorizedSuperadmin(req: NextRequest) {
 }
 
 export async function GET() {
-  const settings = getAutomationSettings();
+  const settings = await getAutomationSettings();
   return NextResponse.json({ settings });
 }
 
@@ -35,7 +35,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const updated = updateAutomationSettings(body);
+    const updated = await updateAutomationSettings(body);
 
     addActivityLog({
       user_id: superadmin.id,

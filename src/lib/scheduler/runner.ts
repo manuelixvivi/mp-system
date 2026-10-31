@@ -26,7 +26,7 @@ export interface JobExecutionResult {
  */
 export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
   const dateIso = targetDate.toISOString().split('T')[0];
-  const settings = getAutomationSettings();
+  const settings = await getAutomationSettings();
 
   if (!settings.devotional_automation_active) {
     return { job: 'devotional_scrape', success: false, message: 'Devotional automation is disabled in settings.' };
@@ -75,10 +75,10 @@ export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Pro
     );
 
     // 3. Save structured devotional
-    const existingDevotional = getDevotionalByDate(dateIso);
+    const existingDevotional = await getDevotionalByDate(dateIso);
     const devotionalId = existingDevotional?.id || `dev_${dateIso}_${Date.now()}`;
 
-    saveDevotional({
+    await saveDevotional({
       id: devotionalId,
       devotional_date: dateIso,
       source_id: `src_${dateIso}`,
@@ -125,13 +125,13 @@ export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Pro
  */
 export async function runDevotionalBroadcastJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
   const dateIso = targetDate.toISOString().split('T')[0];
-  const settings = getAutomationSettings();
+  const settings = await getAutomationSettings();
 
   if (!settings.devotional_automation_active) {
     return { job: 'devotional_broadcast', success: false, message: 'Devotional automation is disabled in settings.' };
   }
 
-  const devotional = getDevotionalByDate(dateIso);
+  const devotional = await getDevotionalByDate(dateIso);
 
   if (!devotional) {
     addNotification({
@@ -177,7 +177,8 @@ export async function runDevotionalBroadcastJob(targetDate: Date = new Date()): 
   }
 
   // Find target groups
-  const targetGroups = getLineGroups().filter((g) => g.is_active && g.assigned_modules.includes('devotional'));
+  const allTargetGroups = await getLineGroups();
+  const targetGroups = allTargetGroups.filter((g) => g.is_active && g.assigned_modules.includes('devotional'));
   const lineClient = new LineApiClient();
   let deliveredCount = 0;
   const errors: string[] = [];
@@ -246,14 +247,15 @@ export async function runBirthdayBroadcastJob(targetDate: Date = new Date()): Pr
   const dateIso = targetDate.toISOString().split('T')[0];
   const day = targetDate.getDate();
   const month = targetDate.getMonth() + 1;
-  const settings = getAutomationSettings();
+  const settings = await getAutomationSettings();
 
   if (!settings.birthday_automation_active) {
     return { job: 'birthday_broadcast', success: false, message: 'Birthday automation is disabled in settings.' };
   }
 
   // 1. Find active members whose birthday is today
-  const activeMembers = getMembers().filter((m) => m.status === 'active');
+  const allMembers = await getMembers();
+  const activeMembers = allMembers.filter((m) => m.status === 'active');
   const birthdayMembers = activeMembers.filter((m) => m.birth_date === day && m.birth_month === month);
 
   if (birthdayMembers.length === 0) {
@@ -262,7 +264,8 @@ export async function runBirthdayBroadcastJob(targetDate: Date = new Date()): Pr
   }
 
   // 2. Group members by their assigned groups
-  const groups = getLineGroups().filter((g) => g.is_active && g.assigned_modules.includes('birthday'));
+  const allGroups = await getLineGroups();
+  const groups = allGroups.filter((g) => g.is_active && g.assigned_modules.includes('birthday'));
   const lineClient = new LineApiClient();
   let totalGroupsBroadcasted = 0;
 

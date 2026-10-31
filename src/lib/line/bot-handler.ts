@@ -151,7 +151,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 
   // --- /STATUS ---
   if (command === '/status' || command.startsWith('/status ')) {
-    return await sendReply(getStatusMessage(userProfile.role, todayIso));
+    return await sendReply(await getStatusMessage(userProfile.role, todayIso));
   }
 
   // --- DEVOTIONAL AUDIT VIA CHAT (/approve, /reject) ---
@@ -159,11 +159,11 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     if (userProfile.role !== 'superadmin' && userProfile.role !== 'liturgi') {
       return await sendReply('⛔ Akses Ditolak: Hanya Tim Liturgi & Superadmin yang berwenang mengaudit renungan.');
     }
-    const devotional = getDevotionalByDate(todayIso);
+    const devotional = await getDevotionalByDate(todayIso);
     if (!devotional) {
       return await sendReply(`⚠️ Renungan hari ini (${todayIso}) belum tersedia dalam sistem.`);
     }
-    updateDevotionalAudit(devotional.id, 'approved', userProfile.name, 'Approved via LINE Personal Chat');
+    await updateDevotionalAudit(devotional.id, 'approved', userProfile.name, 'Approved via LINE Personal Chat');
     return await sendReply(`✅ BERHASIL: Renungan hari ini (${todayIso}) telah disetujui (Approved) oleh ${userProfile.name}. Siap dikirim pada jadwal broadcast 09:45 WIB.`);
   }
 
@@ -171,11 +171,11 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     if (userProfile.role !== 'superadmin' && userProfile.role !== 'liturgi') {
       return await sendReply('⛔ Akses Ditolak: Hanya Tim Liturgi & Superadmin yang berwenang menolak renungan.');
     }
-    const devotional = getDevotionalByDate(todayIso);
+    const devotional = await getDevotionalByDate(todayIso);
     if (!devotional) {
       return await sendReply(`⚠️ Renungan hari ini (${todayIso}) belum tersedia dalam sistem.`);
     }
-    updateDevotionalAudit(devotional.id, 'rejected', userProfile.name, 'Rejected via LINE Personal Chat');
+    await updateDevotionalAudit(devotional.id, 'rejected', userProfile.name, 'Rejected via LINE Personal Chat');
     return await sendReply(`❌ PERINGATAN: Renungan hari ini (${todayIso}) telah DITOLAK (Rejected) oleh ${userProfile.name}. Otomatisasi broadcast renungan 09:45 WIB TIDAK AKAN DIKIRIM.`);
   }
 
@@ -185,7 +185,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
       return await sendReply('⛔ Akses Ditolak: Anda tidak memiliki wewenang untuk broadcast renungan (Daily Devotional).');
     }
 
-    const devotional = getDevotionalByDate(todayIso);
+    const devotional = await getDevotionalByDate(todayIso);
     if (!devotional) {
       return await sendReply('⚠️ Renungan hari ini belum tersedia.');
     }
@@ -208,7 +208,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 
     const todayDate = new Date().getDate();
     const todayMonth = new Date().getMonth() + 1;
-    const bdayMembers = getMembers().filter(
+    const bdayMembers = (await getMembers()).filter(
       (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
     );
 
@@ -248,8 +248,9 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     pendingActions.delete(lineUserId);
 
     if (pending.action === 'broadcast_devotional') {
-      const devotional = getDevotionalByDate(todayIso);
-      const groups = getLineGroups().filter((g) => g.is_active && g.assigned_modules.includes('devotional'));
+      const devotional = await getDevotionalByDate(todayIso);
+      const allGroups = await getLineGroups();
+      const groups = allGroups.filter((g) => g.is_active && g.assigned_modules.includes('devotional'));
 
       let sentCount = 0;
       for (const grp of groups) {
@@ -287,10 +288,11 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     if (pending.action === 'broadcast_birthday') {
       const todayDate = new Date().getDate();
       const todayMonth = new Date().getMonth() + 1;
-      const bdayMembers = getMembers().filter(
+      const bdayMembers = (await getMembers()).filter(
         (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
       );
-      const groups = getLineGroups().filter((g) => g.is_active && g.assigned_modules.includes('birthday'));
+      const allGroups = await getLineGroups();
+      const groups = allGroups.filter((g) => g.is_active && g.assigned_modules.includes('birthday'));
 
       let sentCount = 0;
       for (const grp of groups) {
@@ -368,11 +370,12 @@ function getMenuMessage(role: UserRole, userName: string): string {
   return msg;
 }
 
-function getStatusMessage(role: UserRole, todayIso: string): string {
-  const devotional = getDevotionalByDate(todayIso);
+async function getStatusMessage(role: UserRole, todayIso: string): Promise<string> {
+  const devotional = await getDevotionalByDate(todayIso);
   const todayDate = new Date().getDate();
   const todayMonth = new Date().getMonth() + 1;
-  const bdayMembers = getMembers().filter(
+  const allMembers = await getMembers();
+  const bdayMembers = allMembers.filter(
     (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
   );
 

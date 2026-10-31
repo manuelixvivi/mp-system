@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'devotionalId and action are required' }, { status: 400 });
     }
 
-    const devotional = getDevotionalById(devotionalId);
+    const devotional = await getDevotionalById(devotionalId);
     if (!devotional) {
       return NextResponse.json({ error: 'Data renungan tidak ditemukan' }, { status: 404 });
     }
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         updatedContent.take_one_step || devotional.take_one_step
       );
 
-      const updated = saveDevotional({
+      const updated = await saveDevotional({
         ...devotional,
         ...updatedContent,
         formatted_message: formatted,
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Status audit tidak valid: ${action}` }, { status: 400 });
     }
 
-    const updated = updateDevotionalAudit(
+    const updated = await updateDevotionalAudit(
       devotional.id,
       newStatus,
       auditor?.name || 'Tim Liturgi',

@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     }
 
     const lineClient = new LineApiClient();
-    const allGroups = getLineGroups();
+    const allGroups = await getLineGroups();
     const selectedGroups = allGroups.filter((g) => targetGroupIds.includes(g.id));
 
     if (selectedGroups.length === 0) {
@@ -71,10 +71,10 @@ export async function POST(req: NextRequest) {
 
     // --- EXECUTE DEVOTIONAL BROADCAST ---
     if (module === 'devotional') {
-      let devotional = devotionalId ? getDevotionalById(devotionalId) : null;
+      let devotional = devotionalId ? await getDevotionalById(devotionalId) : null;
       if (!devotional) {
         const todayIso = new Date().toISOString().split('T')[0];
-        devotional = getDevotionalByDate(todayIso);
+        devotional = await getDevotionalByDate(todayIso);
       }
 
       const messageContent = customMessage || devotional?.formatted_message;
@@ -122,7 +122,8 @@ export async function POST(req: NextRequest) {
       const todayDate = today.getDate();
       const todayMonth = today.getMonth() + 1;
 
-      const birthdayMembers = getMembers().filter(
+      const allMembers = await getMembers();
+      const birthdayMembers = allMembers.filter(
         (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
       );
 

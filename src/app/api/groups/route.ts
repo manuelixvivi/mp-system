@@ -23,7 +23,7 @@ async function getAuthorizedSuperadmin(req: NextRequest) {
 }
 
 export async function GET() {
-  const groups = getLineGroups();
+  const groups = await getLineGroups();
   return NextResponse.json({ groups });
 }
 
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Group ID dan Nama Grup wajib diisi.' }, { status: 400 });
     }
 
-    const newGroup = createLineGroup({
+    const newGroup = await createLineGroup({
       group_id,
       group_name,
       description,
@@ -87,7 +87,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Group id is required' }, { status: 400 });
     }
 
-    const updated = updateLineGroup(id, updates);
+    const updated = await updateLineGroup(id, updates);
     if (!updated) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
@@ -125,8 +125,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Group ID wajib disertakan.' }, { status: 400 });
     }
 
-    const group = getLineGroupById(id);
-    const deleted = deleteLineGroup(id);
+    const group = await getLineGroupById(id);
+    const deleted = await deleteLineGroup(id);
     if (!deleted) {
       return NextResponse.json({ error: 'Grup LINE tidak ditemukan.' }, { status: 404 });
     }
