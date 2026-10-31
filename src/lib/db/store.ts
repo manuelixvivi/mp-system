@@ -505,6 +505,21 @@ export async function createProfile(
       console.error('Supabase profile insertion error:', error.message);
       throw new Error(`Gagal menyimpan akun ke Supabase: ${error.message}`);
     }
+
+    // Also sync to Supabase Auth auth.users table so it is visible in Supabase Studio "users" table
+    try {
+      await supabase.auth.admin.createUser({
+        email: normalizedEmail,
+        password: plainPassword || 'MPCommunity2026!',
+        email_confirm: true,
+        user_metadata: {
+          name: newProfile.name,
+          role: newProfile.role,
+        },
+      });
+    } catch (authErr) {
+      console.warn('Supabase auth.admin.createUser sync warning:', authErr);
+    }
   }
 
   return sanitizeProfile(newProfile);
@@ -513,17 +528,40 @@ export async function createProfile(
 export async function deleteProfile(id: string): Promise<boolean> {
   const db = loadDatabase();
   const initialLen = db.profiles.length;
+  const targetUser = db.profiles.find((p) => p.id === id);
   db.profiles = db.profiles.filter((p) => p.id !== id);
   if (db.profiles.length !== initialLen) {
     saveDatabase(db);
   }
 
   if (isSupabaseConfigured && supabase) {
+    // Look up email if not in local memory
+    let userEmail: string | undefined = targetUser?.email;
+    if (!userEmail) {
+      const { data: prof } = await supabase.from('profiles').select('email').eq('id', id).maybeSingle();
+      userEmail = prof?.email;
+    }
+
     const { error } = await supabase.from('profiles').delete().eq('id', id);
     if (error) {
       console.error('Supabase deleteProfile error:', error.message);
       return false;
     }
+
+    // Also remove from Supabase Auth auth.users table
+    if (userEmail) {
+      try {
+        const { data: authUsers } = await supabase.auth.admin.listUsers();
+        const userList = (authUsers?.users || []) as Array<{ id: string; email?: string }>;
+        const authUser = userList.find((u) => u.email === userEmail);
+        if (authUser) {
+          await supabase.auth.admin.deleteUser(authUser.id);
+        }
+      } catch (authErr) {
+        console.warn('Supabase auth.admin.deleteUser sync warning:', authErr);
+      }
+    }
+
     return true;
   }
 
@@ -570,6 +608,21 @@ export async function updateProfilePassword(
           db.profiles.unshift(data);
         }
         saveDatabase(db);
+
+        // Also sync updated password to Supabase Auth auth.users table
+        try {
+          const { data: authUsers } = await supabase.auth.admin.listUsers();
+          const userList = (authUsers?.users || []) as Array<{ id: string; email?: string }>;
+          const authUser = userList.find((u) => u.email === data.email);
+          if (authUser) {
+            await supabase.auth.admin.updateUserById(authUser.id, {
+              password: newPlainPassword,
+            });
+          }
+        } catch (authErr) {
+          console.warn('Supabase auth.admin.updateUserById sync warning:', authErr);
+        }
+
         return sanitizeProfile(data);
       }
     } catch (err) {
