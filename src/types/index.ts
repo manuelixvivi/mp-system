@@ -166,6 +166,8 @@ export interface AutomationSettings {
   timezone: string;
   devotional_automation_active: boolean;
   birthday_automation_active: boolean;
+  groq_api_key?: string;
+  groq_model?: string;
 }
 
 export interface ScheduledJob {

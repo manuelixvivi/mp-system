@@ -1,4 +1,6 @@
 import { Devotional } from '@/types';
+import Groq from 'groq-sdk';
+import { getAutomationSettingsSync } from '../db/store';
 
 export interface LLMProcessingResult {
   success: boolean;
@@ -49,11 +51,7 @@ export async function processDevotionalWithLLM(
   rawContent: string,
   targetDate: string
 ): Promise<LLMProcessingResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey && apiKey.trim().length > 5) {
-    try {
-      const prompt = `Anda adalah asisten liturgi Katolik terpercaya untuk MP Community. Tugas Anda adalah mengekstrak dan menyusun renungan harian ke dalam format resmi "Coffee Break with God" berdasarkan artikel sumber Katolik berikut.
+  const prompt = `Anda adalah asisten liturgi Katolik terpercaya untuk MP Community. Tugas Anda adalah mengekstrak dan menyusun renungan harian ke dalam format resmi "Coffee Break with God" berdasarkan artikel sumber Katolik berikut.
 
 Ketentuan ketat (Strict Rules):
 1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau referensi ayat yang tidak ada.
@@ -73,24 +71,97 @@ Konten Sumber:
 ${rawContent.substring(0, 4000)}
 `;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
+  // 1. Try Groq API first (Ultra-low latency, recommended for high precision)
+  try {
+    const settings = getAutomationSettingsSync();
+    const groqKey = process.env.GROQ_API_KEY || settings.groq_api_key;
+    const groqModel = settings.groq_model || 'llama-3.3-70b-versatile';
+
+    if (groqKey && groqKey.trim().length > 8) {
+      const groqClient = new Groq({ apiKey: groqKey.trim() });
+      const completion = await groqClient.chat.completions.create({
+        model: groqModel,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Anda adalah asisten liturgi Katolik terpercaya untuk MP Community. Kembalikan data HANYA dalam format JSON valid.',
           },
-        }),
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
       });
+
+      const jsonText = completion.choices[0]?.message?.content;
+      if (jsonText) {
+        const parsed = JSON.parse(jsonText);
+        if (
+          parsed.verse_reference &&
+          parsed.verse_text &&
+          parsed.reflection &&
+          parsed.mind_check &&
+          parsed.take_one_step
+        ) {
+          const formatted = formatCoffeeBreakTemplate(
+            parsed.verse_reference,
+            parsed.verse_text,
+            parsed.reflection,
+            parsed.mind_check,
+            parsed.take_one_step
+          );
+
+          return {
+            success: true,
+            verse_reference: parsed.verse_reference,
+            verse_text: parsed.verse_text,
+            reflection: parsed.reflection,
+            mind_check: parsed.mind_check,
+            take_one_step: parsed.take_one_step,
+            formatted_message: formatted,
+            is_fallback_eligible: true,
+          };
+        }
+      }
+    }
+  } catch (groqErr: any) {
+    console.warn('[LLM GROQ API] Exception calling Groq API, attempting Gemini/fallback:', groqErr.message);
+  }
+
+  // 2. Try Gemini API fallback
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && geminiKey.trim().length > 5) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          }),
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
         const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (jsonText) {
           const parsed = JSON.parse(jsonText);
-          if (parsed.verse_reference && parsed.verse_text && parsed.reflection && parsed.mind_check && parsed.take_one_step) {
+          if (
+            parsed.verse_reference &&
+            parsed.verse_text &&
+            parsed.reflection &&
+            parsed.mind_check &&
+            parsed.take_one_step
+          ) {
             const formatted = formatCoffeeBreakTemplate(
               parsed.verse_reference,
               parsed.verse_text,
@@ -113,22 +184,23 @@ ${rawContent.substring(0, 4000)}
         }
       }
     } catch (err: any) {
-      console.warn('[LLM GEMINI API] Exception calling Gemini API, falling back to deterministic Catholic structuring engine:', err.message);
+      console.warn(
+        '[LLM GEMINI API] Exception calling Gemini API, falling back to deterministic Catholic structuring engine:',
+        err.message
+      );
     }
   }
 
-  // Deterministic liturgical extraction engine
+  // 3. Deterministic liturgical extraction engine
   // Analyzes raw content to extract scripture references and produce structured Coffee Break with God template
   let verseRef = 'Mazmur 119:105';
   let verseText = 'Firman-Mu itu pelita bagi kakiku dan terang bagi jalanku.';
 
-  // Check for common scripture references in text
   const verseMatch = rawContent.match(/([1-3]?\s?[A-Za-z]+)\s*(\d+:\d+(-\d+)?)/i);
   if (verseMatch) {
     verseRef = verseMatch[0];
   }
 
-  // Check for quoted verse
   const quoteMatch = rawContent.match(/"([^"]{20,250})"/);
   if (quoteMatch) {
     verseText = quoteMatch[1];
@@ -137,9 +209,12 @@ ${rawContent.substring(0, 4000)}
     verseRef = 'Roma 12:17';
   }
 
-  const reflection = 'Kasih karunia Allah selalu baru setiap pagi. Di tengah hiruk-pikuk kehidupan, luangkan waktu sejenak untuk membiarkan kebenaran firman-Nya menuntun setiap keputusan, menjaga damai di hati, dan menyinari langkah-langkah kita.';
-  const mindCheck = 'Apakah keputusan yang akan kuambil hari ini didasari oleh kasih Kristus atau sekadar keinginan pribadiku?';
-  const takeOneStep = 'Ucapkan syukur secara spesifik atas satu berkat kecil hari ini dan berbagilah kebaikan dengan sesama.';
+  const reflection =
+    'Kasih karunia Allah selalu baru setiap pagi. Di tengah hiruk-pikuk kehidupan, luangkan waktu sejenak untuk membiarkan kebenaran firman-Nya menuntun setiap keputusan, menjaga damai di hati, dan menyinari langkah-langkah kita.';
+  const mindCheck =
+    'Apakah keputusan yang akan kuambil hari ini didasari oleh kasih Kristus atau sekadar keinginan pribadiku?';
+  const takeOneStep =
+    'Ucapkan syukur secara spesifik atas satu berkat kecil hari ini dan berbagilah kebaikan dengan sesama.';
 
   const formatted = formatCoffeeBreakTemplate(verseRef, verseText, reflection, mindCheck, takeOneStep);
 
