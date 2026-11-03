@@ -17,6 +17,12 @@ async function getSuperadmin(req: NextRequest) {
   return profile;
 }
 
+const isCleanValue = (val?: string): boolean => {
+  if (!val) return false;
+  const lower = val.toLowerCase();
+  return !lower.includes('demo') && !lower.includes('dummy') && val.trim().length > 4;
+};
+
 export async function GET(req: NextRequest) {
   try {
     const admin = await getSuperadmin(req);
@@ -29,13 +35,15 @@ export async function GET(req: NextRequest) {
     const envSecret = process.env.LINE_CHANNEL_SECRET;
     const envChannelId = process.env.LINE_CHANNEL_ID;
 
-    const activeToken = envToken || bot.channel_access_token || '';
-    const activeSecret = envSecret || bot.channel_secret || '';
-    const activeChannelId = envChannelId || bot.channel_id || '';
+    const cleanToken = isCleanValue(envToken) ? envToken! : (isCleanValue(bot.channel_access_token) ? bot.channel_access_token : '');
+    const cleanSecret = isCleanValue(envSecret) ? envSecret! : (isCleanValue(bot.channel_secret) ? bot.channel_secret : '');
+    const cleanChannelId = isCleanValue(envChannelId) ? envChannelId! : (isCleanValue(bot.channel_id) ? bot.channel_id : '');
 
-    // Mask secret and token for security display
+    const isConfigured = !!(cleanToken && cleanSecret && cleanChannelId);
+
+    // Mask secret and token for security display only if configured
     const maskString = (str: string) => {
-      if (!str || str.length < 8) return '••••••••••••••••';
+      if (!str || str.length < 8) return '';
       return str.slice(0, 4) + '•'.repeat(Math.min(24, str.length - 8)) + str.slice(-4);
     };
 
@@ -43,12 +51,12 @@ export async function GET(req: NextRequest) {
       bot: {
         id: bot.id,
         name: bot.name || 'MP Community Official Bot',
-        channelId: activeChannelId,
-        channelSecretMasked: maskString(activeSecret),
-        channelAccessTokenMasked: maskString(activeToken),
-        status: bot.status || (activeToken ? 'connected' : 'disconnected'),
-        isConfigured: !!(activeToken && activeSecret && !activeToken.includes('demo') && !activeToken.includes('dummy')),
-        source: envToken ? 'environment_variable' : 'database',
+        channelId: cleanChannelId,
+        channelSecretMasked: maskString(cleanSecret),
+        channelAccessTokenMasked: maskString(cleanToken),
+        status: isConfigured ? (bot.status === 'connected' ? 'connected' : 'disconnected') : 'disconnected',
+        isConfigured,
+        source: isCleanValue(envToken) ? 'environment_variable' : 'database',
       },
     });
   } catch (err: any) {
@@ -99,12 +107,13 @@ export async function POST(req: NextRequest) {
     }
 
     const bot = await getLineBot();
-    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || bot.channel_access_token;
+    const envToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const token = isCleanValue(envToken) ? envToken! : (isCleanValue(bot.channel_access_token) ? bot.channel_access_token : '');
 
-    if (!token || token.includes('demo') || token.includes('dummy')) {
+    if (!token) {
       return NextResponse.json({
         success: false,
-        error: 'Channel Access Token belum dikonfigurasi atau masih menggunakan dummy. Masukkan token resmi dari LINE Developers Console.',
+        error: 'Channel Access Token belum dikonfigurasi. Masukkan token resmi dari LINE Developers Console terlebih dahulu.',
       }, { status: 400 });
     }
 
@@ -120,7 +129,7 @@ export async function POST(req: NextRequest) {
       await updateLineBot({ status: 'connected' });
       return NextResponse.json({
         success: true,
-        message: `Koneksi LINE Messaging API Terverifikasi Aktif & Siap Siaran! (Bot: ${lineData.displayName} - Basic ID: ${lineData.basicId})`,
+        message: `Koneksi LINE Messaging API Terverifikasi Aktif! (Bot: ${lineData.displayName} - Basic ID: ${lineData.basicId})`,
         botInfo: lineData,
       });
     } else {

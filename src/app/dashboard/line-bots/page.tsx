@@ -46,10 +46,10 @@ export default function LineBotManagementPage() {
     source: string;
   }>({
     id: '',
-    name: 'MP Community Official Bot',
+    name: '',
     channelId: '',
-    channelSecretMasked: '••••••••••••••••',
-    channelAccessTokenMasked: '••••••••••••••••',
+    channelSecretMasked: '',
+    channelAccessTokenMasked: '',
     status: 'disconnected',
     isConfigured: false,
     source: 'database',
@@ -310,6 +310,16 @@ export default function LineBotManagementPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="p-16 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-emerald-600" />
+        <p className="text-sm font-semibold text-slate-800">Memuat Konfigurasi...</p>
+        <p className="text-xs text-slate-400 mt-1">Mengambil data integrasi LINE Bot & Groq AI dari database</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
@@ -457,7 +467,7 @@ export default function LineBotManagementPage() {
                   <input
                     type="text"
                     readOnly
-                    value={botData.name}
+                    value={botData.name || 'MP Community Official Bot'}
                     className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-slate-800 font-medium"
                   />
                 </div>
@@ -467,7 +477,8 @@ export default function LineBotManagementPage() {
                   <input
                     type="text"
                     readOnly
-                    value={botData.channelId || '(Belum dikonfigurasi)'}
+                    value={botData.channelId || ''}
+                    placeholder="(Belum dikonfigurasi)"
                     className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg font-mono text-slate-800"
                   />
                 </div>
@@ -480,7 +491,8 @@ export default function LineBotManagementPage() {
                     <input
                       type="text"
                       readOnly
-                      value={botData.channelSecretMasked}
+                      value={botData.channelSecretMasked || ''}
+                      placeholder="(Belum dikonfigurasi)"
                       className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg font-mono text-slate-800 pr-10"
                     />
                     <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3" />
@@ -493,7 +505,8 @@ export default function LineBotManagementPage() {
                     <input
                       type="text"
                       readOnly
-                      value={botData.channelAccessTokenMasked}
+                      value={botData.channelAccessTokenMasked || ''}
+                      placeholder="(Belum dikonfigurasi)"
                       className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg font-mono text-slate-800 pr-10"
                     />
                     <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3" />

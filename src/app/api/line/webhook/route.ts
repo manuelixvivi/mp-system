@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { handleLineWebhookEvent } from '@/lib/line/bot-handler';
+import { getLineBotSync } from '@/lib/db/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,10 +9,11 @@ export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
     const signature = req.headers.get('x-line-signature');
-    const channelSecret = process.env.LINE_CHANNEL_SECRET || 'sec_9876543210abcdef9876543210ab';
+    const bot = getLineBotSync();
+    const channelSecret = process.env.LINE_CHANNEL_SECRET || bot?.channel_secret || '';
 
-    // Verify signature in production or if signature is present
-    if (signature && process.env.NODE_ENV === 'production') {
+    // Verify signature if signature header and secret are present
+    if (signature && channelSecret) {
       const hash = crypto
         .createHmac('SHA256', channelSecret)
         .update(rawBody)

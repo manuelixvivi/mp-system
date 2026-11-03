@@ -18,18 +18,31 @@ import {
   BirthdayBroadcast,
   DevotionalAuditStatus,
 } from '@/types';
-import {
-  INITIAL_PROFILES,
-  INITIAL_LINE_BOT,
-  INITIAL_LINE_GROUPS,
-  INITIAL_MEMBERS,
-  INITIAL_DEVOTIONAL,
-  INITIAL_DEVOTIONAL_SOURCE,
-  INITIAL_SETTINGS,
-  INITIAL_DELIVERIES,
-  INITIAL_LOGS,
-  INITIAL_NOTIFICATIONS,
-} from './mock-data';
+const DEFAULT_LINE_BOT: LineBot = {
+  id: '00000000-0000-0000-0000-000000000001',
+  name: 'MP Community Official Bot',
+  channel_id: '',
+  channel_secret: '',
+  channel_access_token: '',
+  is_active: false,
+  status: 'disconnected',
+  webhook_url: null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const DEFAULT_SETTINGS: AutomationSettings = {
+  devotional_scraping_time: '00:00',
+  devotional_broadcast_time: '09:45',
+  birthday_broadcast_time: '07:00',
+  devotional_fallback_enabled: true,
+  birthday_mention_limit: 20,
+  timezone: 'Asia/Jakarta',
+  devotional_automation_active: true,
+  birthday_automation_active: true,
+  groq_api_key: '',
+  groq_model: 'llama-3.3-70b-versatile',
+};
 
 interface DatabaseData {
   profiles: Profile[];
@@ -119,17 +132,17 @@ function loadDatabase(): DatabaseData {
 
   // Initialize fresh DB
   inMemoryDb = {
-    profiles: [...INITIAL_PROFILES],
-    line_bot: { ...INITIAL_LINE_BOT },
-    line_groups: [...INITIAL_LINE_GROUPS],
-    members: [...INITIAL_MEMBERS],
-    devotionals: [INITIAL_DEVOTIONAL],
-    devotional_sources: [INITIAL_DEVOTIONAL_SOURCE],
-    settings: { ...INITIAL_SETTINGS },
-    deliveries: [...INITIAL_DELIVERIES],
+    profiles: [],
+    line_bot: { ...DEFAULT_LINE_BOT },
+    line_groups: [],
+    members: [],
+    devotionals: [],
+    devotional_sources: [],
+    settings: { ...DEFAULT_SETTINGS },
+    deliveries: [],
     birthday_broadcasts: [],
-    logs: [...INITIAL_LOGS],
-    notifications: [...INITIAL_NOTIFICATIONS],
+    logs: [],
+    notifications: [],
   };
 
   saveDatabase(inMemoryDb);
