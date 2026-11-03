@@ -135,6 +135,15 @@ export default function OverviewPage() {
       : 'bg-rose-100 text-rose-800'
     : 'bg-slate-100 text-slate-600';
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[450px] space-y-3">
+        <div className="w-9 h-9 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm text-slate-500 font-medium">Memuat data dashboard...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Welcome Banner */}
