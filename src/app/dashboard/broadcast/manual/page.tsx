@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
 import { LineGroup } from '@/types';
 import {
@@ -44,48 +45,33 @@ export default function ManualBroadcastStudioPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [grpRes, memRes] = await Promise.all([
-          fetch('/api/groups').then((r) => r.json()),
-          fetch('/api/members').then((r) => r.json()),
+        const today = new Date();
+        const todayIso = today.toISOString().split('T')[0];
+
+        const [grpRes, memRes, devRes] = await Promise.all([
+          fetch('/api/groups').then((r) => r.json()).catch(() => ({ groups: [] })),
+          fetch('/api/members').then((r) => r.json()).catch(() => ({ members: [] })),
+          fetch(`/api/devotionals?date=${todayIso}`).then((r) => r.json()).catch(() => ({ devotional: null })),
         ]);
 
         const grps: LineGroup[] = grpRes.groups || [];
         setGroups(grps);
-        // Default select all groups supporting current module
         const initialSelected = grps.map((g) => g.id);
         setSelectedGroupIds(initialSelected);
 
-        const today = new Date();
         const bdayMems = (memRes.members || []).filter(
-          (m: any) => m.birth_date === today.getDate() && m.birth_month === today.getMonth() + 1
+          (m: any) =>
+            m.status === 'active' &&
+            Number(m.birth_date) === today.getDate() &&
+            Number(m.birth_month) === today.getMonth() + 1
         );
         setBirthdayMembers(bdayMems);
 
-        // Sample devotional
-        setDevotional({
-          id: '99999999-9999-9999-9999-999999999901',
-          verse_reference: 'Roma 12:2',
-          formatted_message: `╔═══════☩══♛══☩═══════╗
- ☕ 𝐂𝐎𝐅𝐅𝐄𝐄 𝐁𝐑𝐄𝐀𝐊 𝐖𝐈𝐓𝐇 𝐆𝐎𝐃 ✝️
-╚═══════☩══✦══☩═══════╝
-
-📖 𝗩𝗲𝗿𝘀𝗲 𝗼𝗳 𝗧𝗵𝗲 𝗗𝗮𝘆 ⋆⋅☆
-Roma 12:2
-"Janganlah kamu menjadi serupa dengan dunia ini, tetapi berubahlah oleh pembaruan budimu, sehingga kamu dapat membedakan manakah kehendak Allah: apa yang baik, yang berkenan kepada Allah dan yang sempurna."
-
-💭 𝗧𝗼𝗱𝗮𝘆’ｓ 𝗥𝗲𝗳𝗹𝗲𝗰𝘁𝗶𝗼𝗻 ✧◦°˚°◦♡
-Dalam kesibukan harian kita yang sering kali bising dan dipenuhi oleh standar duniawi, Tuhan mengundang kita untuk berhenti sejenak. Memperbarui budi berarti mengarahkan pandangan kita kembali kepada Kristus, menyelaraskan setiap keputusan dan perbuatan dengan firman-Nya.
-
-🧠 𝗠𝗶𝗻𝗱 𝗖𝗵𝗲𝗰𝗸 +✟+
-Apakah hari ini tindakanku lebih banyak didorong oleh opini orang sekitar atau kerinduan menyenangkan hati Tuhan?
-
-✨ 𝗧𝗮𝗸𝗲 𝗢𝗻𝗲 𝗦𝘁𝗲𝗽 ⋆ ᭝ ᨳଓ ՟
-Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu merasa kesal atau lelah.
-
-“𝓞𝓷𝓮 𝓿𝓮𝓻𝓼𝓮.
-𝓞𝓷𝓮 𝓻𝓮𝓯𝓵𝓮𝓬𝓽𝓲𝓸𝓷.
-𝓞𝓷𝓮 𝓼𝓽𝓮𝓹 𝓬𝓵𝓸𝓼𝓮𝓻 𝓽𝓸 𝓗𝓲𝓶.”`,
-        });
+        if (devRes.devotional) {
+          setDevotional(devRes.devotional);
+        } else {
+          setDevotional(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -120,29 +106,27 @@ Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu mera
         body: JSON.stringify({
           module: selectedModule,
           targetGroupIds: selectedGroupIds,
-          senderProfileId: currentUser.id,
           customMessage: useCustomMessage ? customMessage : undefined,
           devotionalId: devotional?.id,
         }),
       });
 
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.success) {
         setBroadcastResult({
           success: true,
-          message: data.message || 'Broadcast manual berhasil dikirimkan ke LINE!',
-          sentCount: data.sentCount,
+          message: `Siaran ${selectedModule} berhasil dikirimkan ke ${data.recipientCount} target!`,
         });
       } else {
         setBroadcastResult({
           success: false,
-          message: data.error || 'Gagal mengirimkan broadcast.',
+          message: data.error || 'Gagal mengirimkan siaran ke LINE',
         });
       }
     } catch (err: any) {
       setBroadcastResult({
         success: false,
-        message: err.message || 'Network error',
+        message: err.message || 'Terjadi kesalahan sistem',
       });
     } finally {
       setSending(false);
@@ -152,7 +136,9 @@ Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu mera
   // Preview text calculation
   let previewText = '';
   if (selectedModule === 'devotional') {
-    previewText = useCustomMessage ? customMessage : devotional?.formatted_message || '';
+    previewText = useCustomMessage
+      ? customMessage
+      : devotional?.formatted_message || 'Belum ada renungan hari ini yang diapprove. Tulis pesan custom di bawah atau buat renungan di Audit Studio.';
   } else {
     const mentionNames = birthdayMembers.map((m) => `@${m.full_name}`).join(', ');
     previewText = `𝓱𝓪𝓹𝓹𝔂 𝓫𝓲𝓻𝓽𝓱𝓭𝓪𝔂 ${mentionNames || '@Member'} !\n\nYour birthday is a perfect reminder of this truth—that each day, and especially today, God’s love surrounds you, His grace renews you, and His mercies flow abundantly over your life. No matter what the past year held, His faithfulness has brought you through, and His promises are the foundation for all the joy and blessings awaiting you in the year ahead.\n\n"𝑻𝒉𝒆 𝒔𝒕𝒆𝒂𝒅𝒇𝒂𝒔𝒕 𝒍𝒐𝒗𝒆 𝒐𝒇 𝒕𝒉𝒆 𝑳𝒐𝒓𝒅 𝒏𝒆𝒗𝒆𝒓 𝒄𝒆𝒂𝒔𝒆𝒔; 𝑯𝒊𝒔 𝒎𝒆𝒓𝒄𝒊𝒆𝒔 𝒏𝒆𝒗𝒆𝒓 𝒄𝒐𝒎𝒆 𝒕𝒐 𝒂𝒏 𝒆𝒏𝒅; 𝒕𝒉𝒆𝒚 𝒂𝒓𝒆 𝒏𝒆𝒘 𝒆𝒗𝒆𝒓𝒚 𝒎𝒐𝒓𝒏𝒊𝒏𝒈."\n— 𝙻𝚊𝚖𝚎𝚗𝚝𝚊𝚝𝚒𝚘𝚗𝚜 3:22-23`;
@@ -188,16 +174,16 @@ Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu mera
           className={`p-4 rounded-xl border text-xs flex items-center justify-between ${
             broadcastResult.success
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
           }`}
         >
           <div className="flex items-center space-x-2">
             {broadcastResult.success ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
             )}
-            <span className="font-medium">{broadcastResult.message}</span>
+            <span>{broadcastResult.message}</span>
           </div>
           <button onClick={() => setBroadcastResult(null)} className="text-slate-400 hover:text-slate-600">
             &times;
@@ -207,15 +193,15 @@ Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu mera
 
       {/* Main Studio Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (7 cols): Configuration & Target Groups */}
+        {/* Left Column (7 cols): Configuration Form */}
         <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
           {/* 1. Module Selector */}
           <div>
             <label className="block text-xs font-semibold text-slate-800 uppercase tracking-wider mb-2">
-              1. Pilih Modul Broadcast
+              1. Pilih Modul Siaran
             </label>
             <div className="grid grid-cols-2 gap-3">
-              {/* Daily Devotional Option */}
+              {/* Devotional Option */}
               <button
                 type="button"
                 onClick={() => setSelectedModule('devotional')}
@@ -288,55 +274,97 @@ Ambil jeda 3 menit hari ini untuk mendoakan seseorang yang sedang membuatmu mera
               <label className="text-xs font-semibold text-slate-800 uppercase tracking-wider">
                 2. Pilih Grup LINE Tujuan
               </label>
-              <button
-                type="button"
-                onClick={() => setSelectedGroupIds(groups.map((g) => g.id))}
-                className="text-[11px] text-emerald-600 hover:underline font-medium"
-              >
-                Pilih Semua Grup
-              </button>
+              {groups.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupIds(groups.map((g) => g.id))}
+                  className="text-[11px] text-emerald-600 hover:underline font-medium"
+                >
+                  Pilih Semua Grup
+                </button>
+              )}
             </div>
 
-            <div className="space-y-2">
-              {groups.map((grp) => {
-                const isSelected = selectedGroupIds.includes(grp.id);
-                return (
-                  <div
-                    key={grp.id}
-                    onClick={() => handleToggleGroup(grp.id)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between text-xs ${
-                      isSelected
-                        ? 'border-emerald-500 bg-emerald-50/40'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={`w-4 h-4 rounded flex items-center justify-center border ${
-                          isSelected
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3 h-3" />}
+            {groups.length === 0 ? (
+              <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-500">
+                Belum ada grup LINE yang terdaftar. Tambahkan grup di{' '}
+                <Link href="/dashboard/groups" className="text-emerald-600 font-medium underline">
+                  Manajemen Grup LINE
+                </Link>.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {groups.map((grp) => {
+                  const isSelected = selectedGroupIds.includes(grp.id);
+                  return (
+                    <div
+                      key={grp.id}
+                      onClick={() => handleToggleGroup(grp.id)}
+                      className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between text-xs ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50/40'
+                          : 'border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center border ${
+                            isSelected
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3" />}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{grp.group_name}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {grp.group_id} • {grp.member_count} Anggota
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">{grp.group_name}</p>
-                        <p className="text-[10px] text-slate-400">
-                          {grp.group_id} • {grp.member_count} Anggota
-                        </p>
-                      </div>
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">
+                        {grp.assigned_modules?.join(', ') || 'Semua Modul'}
+                      </span>
                     </div>
-                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">
-                      Broadcast-Only
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* 3. Action Button */}
+          {/* 3. Custom Content Override (Optional) */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-slate-800 uppercase tracking-wider">
+                3. Override Konten Pesan (Opsional)
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="useCustom"
+                  checked={useCustomMessage}
+                  onChange={(e) => setUseCustomMessage(e.target.checked)}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                />
+                <label htmlFor="useCustom" className="text-xs text-slate-600 cursor-pointer">
+                  Kustomisasi Teks Pesan
+                </label>
+              </div>
+            </div>
+
+            {useCustomMessage && (
+              <textarea
+                rows={5}
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                placeholder="Tulis pesan kustom Anda di sini..."
+                className="w-full text-xs p-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono leading-relaxed"
+              />
+            )}
+          </div>
+
+          {/* Execution Button */}
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
             <span className="text-xs text-slate-500">
               Target: <strong className="text-slate-800">{selectedGroupIds.length}</strong> grup terpilih

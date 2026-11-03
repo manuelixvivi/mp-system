@@ -1262,7 +1262,10 @@ export async function getDeliveries(): Promise<BroadcastDelivery[]> {
         .select('*')
         .order('delivered_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.deliveries = data as BroadcastDelivery[];
+        saveDatabase(db);
         return data as BroadcastDelivery[];
       }
     } catch (err) {
@@ -1343,7 +1346,10 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
         .order('created_at', { ascending: false })
         .limit(200);
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.logs = data as ActivityLog[];
+        saveDatabase(db);
         return data as ActivityLog[];
       }
     } catch (err) {
