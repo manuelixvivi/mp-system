@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
         updatedContent.verse_text || devotional.verse_text,
         updatedContent.reflection || devotional.reflection,
         updatedContent.mind_check || devotional.mind_check,
-        updatedContent.take_one_step || devotional.take_one_step
+        updatedContent.take_one_step || devotional.take_one_step,
+        updatedContent.saint_commemoration !== undefined ? updatedContent.saint_commemoration : devotional.saint_commemoration
       );
 
       const updated = await saveDevotional({

@@ -121,6 +121,7 @@ export interface Devotional {
   id: string;
   devotional_date: string; // YYYY-MM-DD
   source_id?: string;
+  saint_commemoration?: string;
   verse_reference: string;
   verse_text: string;
   reflection: string;

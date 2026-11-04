@@ -138,6 +138,12 @@ export default function DevotionalManagementPage() {
                   )}
                 </div>
 
+                {dev.saint_commemoration && (
+                  <p className="text-[11px] font-medium text-amber-800">
+                    🕊️ Peringatan : {dev.saint_commemoration}
+                  </p>
+                )}
+
                 <p className="text-xs text-slate-600 line-clamp-2 italic">
                   "{dev.verse_text?.replace(/^"|"$/g, '')}"
                 </p>

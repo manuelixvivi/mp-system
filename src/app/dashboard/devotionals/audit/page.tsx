@@ -25,6 +25,7 @@ export default function DevotionalAuditPage() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Form states for editable fields
+  const [saintCommemoration, setSaintCommemoration] = useState('');
   const [verseRef, setVerseRef] = useState('');
   const [verseText, setVerseText] = useState('');
   const [reflection, setReflection] = useState('');
@@ -43,6 +44,7 @@ export default function DevotionalAuditPage() {
 
       if (data.devotional) {
         setDevotional(data.devotional);
+        setSaintCommemoration(data.devotional.saint_commemoration || '');
         setVerseRef(data.devotional.verse_reference || '');
         setVerseText(data.devotional.verse_text || '');
         setReflection(data.devotional.reflection || '');
@@ -130,6 +132,7 @@ export default function DevotionalAuditPage() {
           devotionalId: devotional.id,
           action: 'update_content',
           updatedContent: {
+            saint_commemoration: saintCommemoration,
             verse_reference: verseRef,
             verse_text: verseText,
             reflection,
@@ -235,7 +238,7 @@ export default function DevotionalAuditPage() {
   const formattedPreview = `╔═══════☩══♛══☩═══════╗
  ☕ 𝐂𝐎𝐅𝐅𝐄𝐄 𝐁𝐑𝐄𝐀𝐊 𝐖𝐈𝐓𝐇 𝐆𝐎𝐃 ✝️
 ╚═══════☩══✦══☩═══════╝
-
+${saintCommemoration ? `\n🕊️ Peringatan : ${saintCommemoration}\n` : ''}
 📖 𝗩𝗲𝗿𝘀𝗲 𝗼𝗳 𝗧𝗵𝗲 𝗗𝗮𝘆 ⋆⋅☆
 ${verseRef}
 "${verseText.replace(/^"|"$/g, '')}"
@@ -374,6 +377,20 @@ ${takeOneStep}
           </div>
 
           <div className="space-y-3 flex-1 overflow-y-auto max-h-[550px] pr-1">
+            {/* Saint Commemoration */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">
+                Peringatan Santo/Santa
+              </label>
+              <input
+                type="text"
+                value={saintCommemoration}
+                onChange={(e) => setSaintCommemoration(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="Contoh: Santo Karolus Boromeus, Uskup (atau kosongkan jika hari biasa)"
+              />
+            </div>
+
             {/* Verse Reference */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">

@@ -326,6 +326,15 @@ export default function OverviewPage() {
               </div>
 
               <div className="mt-4 space-y-4">
+                {todayDevotional.saint_commemoration && (
+                  <div className="flex items-center space-x-2 text-xs text-amber-900 bg-amber-50/80 px-3.5 py-2 rounded-xl border border-amber-200/70 font-medium">
+                    <span className="text-base">🕊️</span>
+                    <span>
+                      Peringatan : <strong className="text-amber-950 font-semibold">{todayDevotional.saint_commemoration}</strong>
+                    </span>
+                  </div>
+                )}
+
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
                   <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block mb-1">
                     📖 Verse of The Day

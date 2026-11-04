@@ -83,6 +83,7 @@ export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Pro
       id: devotionalId,
       devotional_date: dateIso,
       source_id: `src_${dateIso}`,
+      saint_commemoration: llmResult.saint_commemoration,
       verse_reference: llmResult.verse_reference,
       verse_text: llmResult.verse_text,
       reflection: llmResult.reflection,
