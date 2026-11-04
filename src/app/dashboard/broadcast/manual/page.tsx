@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
+import { useServerTime } from '@/context/ServerTimeContext';
+import { getWibParts, getWibIsoDate } from '@/lib/time';
 import { LineGroup } from '@/types';
 import {
   Radio,
@@ -45,14 +47,17 @@ export default function ManualBroadcastStudioPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const today = new Date();
-        const todayIso = today.toISOString().split('T')[0];
-
-        const [grpRes, memRes, devRes] = await Promise.all([
+        const [timeRes, grpRes, memRes] = await Promise.all([
+          fetch('/api/time', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
           fetch('/api/groups').then((r) => r.json()).catch(() => ({ groups: [] })),
           fetch('/api/members').then((r) => r.json()).catch(() => ({ members: [] })),
-          fetch(`/api/devotionals?date=${todayIso}`).then((r) => r.json()).catch(() => ({ devotional: null })),
         ]);
+
+        const todayDate = timeRes?.wib?.day ?? getWibParts().day;
+        const todayMonth = timeRes?.wib?.month ?? getWibParts().month;
+        const todayIso = timeRes?.wib?.isoDate ?? getWibIsoDate();
+
+        const devRes = await fetch(`/api/devotionals?date=${todayIso}`).then((r) => r.json()).catch(() => ({ devotional: null }));
 
         const grps: LineGroup[] = grpRes.groups || [];
         setGroups(grps);
@@ -62,8 +67,8 @@ export default function ManualBroadcastStudioPage() {
         const bdayMems = (memRes.members || []).filter(
           (m: any) =>
             m.status === 'active' &&
-            Number(m.birth_date) === today.getDate() &&
-            Number(m.birth_month) === today.getMonth() + 1
+            Number(m.birth_date) === todayDate &&
+            Number(m.birth_month) === todayMonth
         );
         setBirthdayMembers(bdayMems);
 

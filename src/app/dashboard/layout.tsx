@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { RoleProvider } from '@/context/RoleContext';
+import { ServerTimeProvider } from '@/context/ServerTimeContext';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 
@@ -11,14 +12,16 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <RoleProvider>
-      <div className="flex min-h-screen bg-slate-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Topbar />
-          <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+    <ServerTimeProvider>
+      <RoleProvider>
+        <div className="flex min-h-screen bg-slate-50">
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <Topbar />
+            <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+          </div>
         </div>
-      </div>
-    </RoleProvider>
+      </RoleProvider>
+    </ServerTimeProvider>
   );
 }

@@ -13,6 +13,7 @@ import {
 import { scrapeTheKatolikDevotional } from '../scraper/the-katolik';
 import { processDevotionalWithLLM } from '../llm/gemini';
 import { LineApiClient } from '../line/client';
+import { getWibParts, getWibIsoDate } from '../time';
 
 export interface JobExecutionResult {
   job: string;
@@ -25,7 +26,7 @@ export interface JobExecutionResult {
  * 1. SCRAPING JOB: 00:00 WIB
  */
 export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
-  const dateIso = targetDate.toISOString().split('T')[0];
+  const dateIso = getWibIsoDate(targetDate);
   const settings = await getAutomationSettings();
 
   if (!settings.devotional_automation_active) {
@@ -124,7 +125,7 @@ export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Pro
  * 2. BROADCAST DEVOTIONAL JOB: 09:45 WIB (With Audit & Fallback Policy)
  */
 export async function runDevotionalBroadcastJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
-  const dateIso = targetDate.toISOString().split('T')[0];
+  const dateIso = getWibIsoDate(targetDate);
   const settings = await getAutomationSettings();
 
   if (!settings.devotional_automation_active) {
@@ -244,9 +245,7 @@ export async function runDevotionalBroadcastJob(targetDate: Date = new Date()): 
  * 3. BIRTHDAY BROADCAST JOB: 07:00 WIB
  */
 export async function runBirthdayBroadcastJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
-  const dateIso = targetDate.toISOString().split('T')[0];
-  const day = targetDate.getDate();
-  const month = targetDate.getMonth() + 1;
+  const { isoDate: dateIso, day, month } = getWibParts(targetDate);
   const settings = await getAutomationSettings();
 
   if (!settings.birthday_automation_active) {

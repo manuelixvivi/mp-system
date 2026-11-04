@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRole } from '@/context/RoleContext';
+import { useServerTime } from '@/context/ServerTimeContext';
 import { UserRole } from '@/types';
 import {
   Bell,
@@ -22,7 +23,7 @@ import {
 
 export default function Topbar() {
   const { currentRole, currentUser, logout, loading } = useRole();
-  const [currentTime, setCurrentTime] = useState<string>('');
+  const { wibTimeStr, isSynced } = useServerTime();
   const [showNotifications, setShowNotifications] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -81,24 +82,6 @@ export default function Topbar() {
     }
   };
 
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const timeStr = new Intl.DateTimeFormat('id-ID', {
-        timeZone: 'Asia/Jakarta',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      }).format(now);
-      setCurrentTime(timeStr);
-    };
-
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const roleConfigs: Record<UserRole, { title: string; badgeColor: string; icon: any }> = {
     superadmin: {
       title: 'Superadmin',
@@ -137,10 +120,13 @@ export default function Topbar() {
           <span className="text-xs font-semibold text-emerald-800">LINE Bot: Connected</span>
         </div>
 
-        {/* Live WIB Clock */}
-        <div className="flex items-center space-x-1.5 text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-          <Clock className="w-3.5 h-3.5 text-slate-400" />
-          <span className="font-mono font-medium text-slate-700">{currentTime || '00:00:00'}</span>
+        {/* Live WIB Clock (Synchronized to Server Time) */}
+        <div
+          className="flex items-center space-x-1.5 text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/50"
+          title={isSynced ? 'Jam Server Terverifikasi (WIB)' : 'Menyinkronkan jam server...'}
+        >
+          <Clock className={`w-3.5 h-3.5 ${isSynced ? 'text-slate-400' : 'text-amber-500 animate-spin'}`} />
+          <span className="font-mono font-medium text-slate-700">{wibTimeStr || '--:--:--'}</span>
           <span className="text-[10px] text-slate-400 font-medium">WIB</span>
         </div>
       </div>

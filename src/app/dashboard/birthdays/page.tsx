@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
+import { useServerTime } from '@/context/ServerTimeContext';
 import { Member, LineGroup } from '@/types';
 import {
   Gift,
@@ -196,11 +197,8 @@ export default function BirthdayManagementPage() {
     }
   };
 
-  // Helper calculations for Flight Progress Strips
-  const today = new Date();
-  const todayDate = today.getDate();
-  const todayMonth = today.getMonth() + 1;
-  const currentYear = today.getFullYear();
+  // Helper calculations for Flight Progress Strips (Synchronized to Server WIB Time)
+  const { wibDay: todayDate, wibMonth: todayMonth, wibYear: currentYear } = useServerTime();
 
   const getMemberStatus = (member: Member) => {
     const isToday = member.birth_date === todayDate && member.birth_month === todayMonth;

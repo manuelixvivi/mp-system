@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
+import { useServerTime } from '@/context/ServerTimeContext';
+import { getWibParts, getWibIsoDate } from '@/lib/time';
 import { Member, LineGroup, Devotional, AutomationSettings, BroadcastDelivery } from '@/types';
 import {
   BookOpen,
@@ -42,24 +44,26 @@ interface OverviewState {
 
 export default function OverviewPage() {
   const { currentRole, currentUser } = useRole();
+  const { wibIsoDate, wibDay, wibMonth } = useServerTime();
   const [data, setData] = useState<OverviewState | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadStats() {
       try {
-        const today = new Date();
-        const todayDate = today.getDate();
-        const todayMonth = today.getMonth() + 1;
-        const todayIso = today.toISOString().split('T')[0];
-
-        const [groupsRes, membersRes, deliveriesRes, settingsRes, devotionalRes] = await Promise.all([
+        const [timeRes, groupsRes, membersRes, deliveriesRes, settingsRes] = await Promise.all([
+          fetch('/api/time', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
           fetch('/api/groups').then((r) => r.json()).catch(() => ({ groups: [] })),
           fetch('/api/members').then((r) => r.json()).catch(() => ({ members: [] })),
           fetch('/api/broadcast/history').then((r) => r.json()).catch(() => ({ deliveries: [] })),
           fetch('/api/settings').then((r) => r.json()).catch(() => ({ settings: null })),
-          fetch(`/api/devotionals?date=${todayIso}`).then((r) => r.json()).catch(() => ({ devotional: null })),
         ]);
+
+        const todayDate = timeRes?.wib?.day ?? getWibParts().day;
+        const todayMonth = timeRes?.wib?.month ?? getWibParts().month;
+        const todayIso = timeRes?.wib?.isoDate ?? getWibIsoDate();
+
+        const devotionalRes = await fetch(`/api/devotionals?date=${todayIso}`).then((r) => r.json()).catch(() => ({ devotional: null }));
 
         const rawMembers: Member[] = membersRes.members || [];
         const bdayMembers = rawMembers.filter(
@@ -85,10 +89,9 @@ export default function OverviewPage() {
     loadStats();
   }, []);
 
-  const today = new Date();
-  const todayDate = today.getDate();
-  const todayMonth = today.getMonth() + 1;
-  const todayIso = today.toISOString().split('T')[0];
+  const todayDate = wibDay;
+  const todayMonth = wibMonth;
+  const todayIso = wibIsoDate;
 
   const groups = data?.groups || [];
   const birthdayToday = data?.birthdayToday || [];

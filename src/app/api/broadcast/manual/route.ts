@@ -13,6 +13,7 @@ import {
 import { LineApiClient } from '@/lib/line/client';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 import { UserRole } from '@/types';
+import { getWibIsoDate, getWibParts } from '@/lib/time';
 
 export async function POST(req: NextRequest) {
   try {
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (module === 'devotional') {
       let devotional = devotionalId ? await getDevotionalById(devotionalId) : null;
       if (!devotional) {
-        const todayIso = new Date().toISOString().split('T')[0];
+        const todayIso = getWibIsoDate();
         devotional = await getDevotionalByDate(todayIso);
       }
 
@@ -118,9 +119,7 @@ export async function POST(req: NextRequest) {
 
     // --- EXECUTE BIRTHDAY BROADCAST ---
     if (module === 'birthday') {
-      const today = new Date();
-      const todayDate = today.getDate();
-      const todayMonth = today.getMonth() + 1;
+      const { day: todayDate, month: todayMonth } = getWibParts();
 
       const allMembers = await getMembers();
       const birthdayMembers = allMembers.filter(

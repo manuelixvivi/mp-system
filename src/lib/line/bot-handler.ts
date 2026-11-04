@@ -10,6 +10,7 @@ import {
 } from '../db/store';
 import { LineApiClient } from './client';
 import { UserRole } from '@/types';
+import { getWibParts, getWibIsoDate } from '../time';
 
 // Pending confirmation memory store for personal chat sessions
 interface PendingAction {
@@ -118,7 +119,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 
   // 2. Process Command
   const command = rawText.toLowerCase();
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getWibIsoDate();
 
   // Helper response
   const sendReply = async (text: string) => {
@@ -206,8 +207,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
       return await sendReply('⛔ Akses Ditolak: Anda tidak memiliki wewenang untuk broadcast ulang tahun (Birthday Automation).');
     }
 
-    const todayDate = new Date().getDate();
-    const todayMonth = new Date().getMonth() + 1;
+    const { day: todayDate, month: todayMonth } = getWibParts();
     const bdayMembers = (await getMembers()).filter(
       (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
     );
@@ -286,8 +286,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     }
 
     if (pending.action === 'broadcast_birthday') {
-      const todayDate = new Date().getDate();
-      const todayMonth = new Date().getMonth() + 1;
+      const { day: todayDate, month: todayMonth } = getWibParts();
       const bdayMembers = (await getMembers()).filter(
         (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth
       );
@@ -372,8 +371,7 @@ function getMenuMessage(role: UserRole, userName: string): string {
 
 async function getStatusMessage(role: UserRole, todayIso: string): Promise<string> {
   const devotional = await getDevotionalByDate(todayIso);
-  const todayDate = new Date().getDate();
-  const todayMonth = new Date().getMonth() + 1;
+  const { day: todayDate, month: todayMonth } = getWibParts();
   const allMembers = await getMembers();
   const bdayMembers = allMembers.filter(
     (m) => m.status === 'active' && m.birth_date === todayDate && m.birth_month === todayMonth

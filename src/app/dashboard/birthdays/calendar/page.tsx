@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useServerTime } from '@/context/ServerTimeContext';
 import { Member, LineGroup } from '@/types';
 import {
   Calendar as CalendarIcon,
@@ -29,11 +30,22 @@ const MONTH_NAMES = [
 ];
 
 export default function BirthdayCalendarPage() {
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1); // 1-12
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const { wibDay, wibMonth, wibYear, isSynced } = useServerTime();
+  const [currentMonth, setCurrentMonth] = useState(wibMonth || 11);
+  const [currentYear, setCurrentYear] = useState(wibYear || 2026);
+  const [selectedDay, setSelectedDay] = useState<number>(wibDay || 4);
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
   const [loading, setLoading] = useState(true);
+  const hasInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (isSynced && !hasInitializedRef.current) {
+      setCurrentMonth(wibMonth);
+      setCurrentYear(wibYear);
+      setSelectedDay(wibDay);
+      hasInitializedRef.current = true;
+    }
+  }, [isSynced, wibMonth, wibYear, wibDay]);
 
   useEffect(() => {
     async function fetchMembers() {

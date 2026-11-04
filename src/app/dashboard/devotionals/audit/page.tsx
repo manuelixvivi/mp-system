@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
+import { getWibIsoDate } from '@/lib/time';
 import {
   CheckCircle2,
   XCircle,
@@ -34,7 +35,7 @@ export default function DevotionalAuditPage() {
   const loadDevotional = async (dateStr?: string) => {
     setLoading(true);
     try {
-      const dateToFetch = dateStr || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('date') : null) || new Date().toISOString().split('T')[0];
+      const dateToFetch = dateStr || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('date') : null) || getWibIsoDate();
       setTargetDate(dateToFetch);
 
       const res = await fetch(`/api/devotionals?date=${dateToFetch}`);

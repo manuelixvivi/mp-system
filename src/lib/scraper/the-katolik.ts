@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { DevotionalSource } from '@/types';
+import { getWibParts } from '../time';
 
 // Month names in Indonesian for URL generation
 const INDONESIAN_MONTHS = [
@@ -18,10 +19,9 @@ const INDONESIAN_MONTHS = [
 ];
 
 export function buildTheKatolikUrl(date: Date): string {
-  const year = date.getFullYear();
-  const monthNumber = String(date.getMonth() + 1).padStart(2, '0');
-  const day = date.getDate();
-  const monthName = INDONESIAN_MONTHS[date.getMonth()];
+  const { year, month, day } = getWibParts(date);
+  const monthNumber = String(month).padStart(2, '0');
+  const monthName = INDONESIAN_MONTHS[month - 1];
 
   // Format: https://www.thekatolik.com/{YYYY}/{MM}/renungan-harian-katolik-{D}-{monthName}-{YYYY}.html
   return `https://www.thekatolik.com/${year}/${monthNumber}/renungan-harian-katolik-${day}-${monthName}-${year}.html`;
@@ -38,7 +38,7 @@ export interface ScrapedResult {
 }
 
 export async function scrapeTheKatolikDevotional(targetDate: Date = new Date()): Promise<ScrapedResult> {
-  const dateIso = targetDate.toISOString().split('T')[0];
+  const dateIso = getWibParts(targetDate).isoDate;
   const url = buildTheKatolikUrl(targetDate);
 
   try {
