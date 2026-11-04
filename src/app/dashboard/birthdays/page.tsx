@@ -33,7 +33,6 @@ import {
   UploadCloud,
   Download,
   CheckCircle2,
-  Palette,
   RefreshCw,
 } from 'lucide-react';
 import { parseMemberExcelBuffer } from '@/lib/excel/member-parser';
@@ -909,23 +908,13 @@ export default function BirthdayManagementPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setSelectedStrip(member)}
-                          className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1"
-                        >
-                          <Eye className="w-3 h-3" />
-                          <span>DETAIL</span>
-                        </button>
-                        <Link
-                          href="/dashboard/pubdok/editor"
-                          className="text-rose-600 hover:text-rose-700 font-bold flex items-center space-x-1 text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200"
-                          title="Buka Editor Kartu Ultah Pubdok"
-                        >
-                          <Palette className="w-3 h-3" />
-                          <span>KARTU</span>
-                        </Link>
-                      </div>
+                      <button
+                        onClick={() => setSelectedStrip(member)}
+                        className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>DETAIL</span>
+                      </button>
 
                       <div className="flex items-center space-x-2">
                         {member.line_user_id && (

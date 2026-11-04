@@ -687,10 +687,6 @@ function getHelpMessage(role: UserRole, userName: string): string {
     commands += `\n[Modul Ulang Tahun]\n• /broadcast birthday — Broadcast manual ucapan ulang tahun\n`;
   }
 
-  if (role === 'superadmin' || role === 'pubdok') {
-    commands += `\n[Modul Pubdok]\n• Buka Dashboard Studio Pubdok untuk edit kartu ultah: /dashboard/pubdok/editor\n`;
-  }
-
   commands += `\n💡 Semua perintah broadcast akan meminta konfirmasi (/confirm) sebelum dikirim ke grup.`;
   return commands;
 }
@@ -717,10 +713,6 @@ function getMenuMessage(role: UserRole, userName: string): string {
 
   if (role === 'superadmin' || role === 'logistik') {
     msg += `5️⃣ /broadcast birthday — Kirim ucapan ultah hari ini\n`;
-  }
-
-  if (role === 'superadmin' || role === 'pubdok') {
-    msg += `🎨 Menu Pubdok: Buka Editor Kartu Ultah di Dashboard Web\n`;
   }
 
   msg += `\nℹ️ Akses dashboard web lengkap di: https://mp-control.vercel.app`;
