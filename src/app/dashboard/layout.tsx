@@ -5,6 +5,7 @@ import { RoleProvider } from '@/context/RoleContext';
 import { ServerTimeProvider } from '@/context/ServerTimeContext';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
+import ActiveSchedulerWatcher from '@/components/ActiveSchedulerWatcher';
 
 export default function DashboardLayout({
   children,
@@ -21,6 +22,7 @@ export default function DashboardLayout({
             <main className="flex-1 p-6 overflow-y-auto">{children}</main>
           </div>
         </div>
+        <ActiveSchedulerWatcher />
       </RoleProvider>
     </ServerTimeProvider>
   );

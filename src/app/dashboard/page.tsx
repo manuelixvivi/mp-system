@@ -56,7 +56,7 @@ export default function OverviewPage() {
           fetch('/api/groups').then((r) => r.json()).catch(() => ({ groups: [] })),
           fetch('/api/members').then((r) => r.json()).catch(() => ({ members: [] })),
           fetch('/api/broadcast/history').then((r) => r.json()).catch(() => ({ deliveries: [] })),
-          fetch('/api/settings').then((r) => r.json()).catch(() => ({ settings: null })),
+          fetch('/api/settings', { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store' } }).then((r) => r.json()).catch(() => ({ settings: null })),
         ]);
 
         const todayDate = timeRes?.wib?.day ?? getWibParts().day;
@@ -479,7 +479,7 @@ export default function OverviewPage() {
                               : 'bg-blue-100 text-blue-800 border-blue-300'
                           }`}
                         >
-                          {bdayDeliveredToday ? 'CLEARED 07:00' : `SCHEDULED ${settings?.birthday_broadcast_time || '07:00'}`}
+                          {bdayDeliveredToday ? `CLEARED ${settings?.birthday_broadcast_time || '07:00'}` : `SCHEDULED ${settings?.birthday_broadcast_time || '07:00'}`}
                         </span>
                       </div>
                     </div>
