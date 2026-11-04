@@ -1,6 +1,7 @@
 import { Devotional } from '@/types';
 import Groq from 'groq-sdk';
 import { getAutomationSettings } from '../db/store';
+import { resolveExactVerse } from '../bible/resolver';
 
 export interface LLMProcessingResult {
   success: boolean;
@@ -163,11 +164,12 @@ Ketentuan ketat (Strict Rules):
 1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau referensi ayat yang tidak ada di dalam teks bacaan liturgi sumber.
 2. Pertahankan keaslian konteks teologis dan makna firman dari sumber Katolik.
 3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa).
-4. Ekstrak satu ayat emas utama (Verse of The Day), renungan singkat aplikatif (Today's Reflection 2-4 kalimat yang menguatkan), satu pertanyaan refleksi pribadi mendalam (Mind Check), dan satu tindakan konkrit hari ini (Take One Step).
-5. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
+4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS nomor ayat spesifik yang tepat dari teks kutipan (contoh: 'Lukas 14:27' atau 'Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
+5. Ekstrak renungan singkat aplikatif (Today's Reflection 2-4 kalimat yang menguatkan), satu pertanyaan refleksi pribadi mendalam (Mind Check), dan satu tindakan konkrit hari ini (Take One Step).
+6. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
 {
   "saint_commemoration": "nama peringatan santa/santo hari ini (contoh: Santo Karolus Boromeus, Uskup), atau kosongkan string jika tidak ada peringatan khusus",
-  "verse_reference": "contoh: Lukas 14:27 atau Roma 12:2",
+  "verse_reference": "nomor ayat tunggal spesifik yang tepat, contoh: Lukas 14:27 (bukan rentang perikop)",
   "verse_text": "isi ayat Alkitab asli tanpa tambahan tafsiran",
   "reflection": "renungan singkat aplikatif (2-4 kalimat)",
   "mind_check": "pertanyaan refleksi pribadi yang mendalam",
@@ -214,8 +216,9 @@ ${rawContent.substring(0, 5000)}
           parsed.take_one_step
         ) {
           const saintName = parsed.saint_commemoration || '';
+          const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
           const formatted = formatCoffeeBreakTemplate(
-            parsed.verse_reference,
+            exactRef,
             parsed.verse_text,
             parsed.reflection,
             parsed.mind_check,
@@ -226,7 +229,7 @@ ${rawContent.substring(0, 5000)}
           return {
             success: true,
             saint_commemoration: saintName,
-            verse_reference: parsed.verse_reference,
+            verse_reference: exactRef,
             verse_text: parsed.verse_text,
             reflection: parsed.reflection,
             mind_check: parsed.mind_check,
@@ -273,8 +276,9 @@ ${rawContent.substring(0, 5000)}
             parsed.take_one_step
           ) {
             const saintName = parsed.saint_commemoration || '';
+            const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
             const formatted = formatCoffeeBreakTemplate(
-              parsed.verse_reference,
+              exactRef,
               parsed.verse_text,
               parsed.reflection,
               parsed.mind_check,
@@ -285,7 +289,7 @@ ${rawContent.substring(0, 5000)}
             return {
               success: true,
               saint_commemoration: saintName,
-              verse_reference: parsed.verse_reference,
+              verse_reference: exactRef,
               verse_text: parsed.verse_text,
               reflection: parsed.reflection,
               mind_check: parsed.mind_check,
@@ -303,8 +307,9 @@ ${rawContent.substring(0, 5000)}
 
   // 3. Intelligent liturgical extraction engine directly from real scraped Catholic content
   const extracted = extractFromScrapedLiturgy(rawTitle, rawContent);
+  const exactRef = await resolveExactVerse(extracted.verseText, extracted.verseRef);
   const formatted = formatCoffeeBreakTemplate(
-    extracted.verseRef,
+    exactRef,
     extracted.verseText,
     extracted.reflection,
     extracted.mindCheck,
@@ -315,7 +320,7 @@ ${rawContent.substring(0, 5000)}
   return {
     success: true,
     saint_commemoration: extracted.saintCommemoration,
-    verse_reference: extracted.verseRef,
+    verse_reference: exactRef,
     verse_text: extracted.verseText,
     reflection: extracted.reflection,
     mind_check: extracted.mindCheck,
