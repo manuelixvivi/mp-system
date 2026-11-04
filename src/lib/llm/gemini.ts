@@ -120,7 +120,7 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
     const paragraphs = rawContent.split(/\n+/).map((p) => p.trim()).filter((p) => p.length > 80);
     reflection =
       paragraphs[0] ||
-      'Mengikuti Kristus berarti membiarkan seluruh kehidupan kita dibentuk oleh-Nya: cara berpikir, berbicara, mengambil keputusan, dan menentukan apa yang paling utama.';
+      'Di tengah padatnya tugas kuliah dan rutinitas yang bikin overthinking, firman hari ini ngingetin kita: kita nggak pernah jalan sendirian. Belajar mengandalkan Tuhan bukan berarti masalah langsung auto kelar, tapi bikin hati kita jauh lebih tenang dan punya arah yang jelas di setiap langkah.';
   }
 
   // 5. Extract or craft Mind Check question
@@ -130,12 +130,12 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
     mindCheck = questionMatch[1].trim();
   } else {
     mindCheck =
-      'Apakah Yesus sungguh menjadi yang terutama dalam setiap keputusan hidupku hari ini, ataukah aku masih terikat pada kenyamanan diri sendiri?';
+      'Pas lagi pusing sama urusan tugas, circle pertemanan, atau overthinking masa depan, siapa yang biasanya jadi pelarian pertama kamu: sosmed, validasi orang lain, atau bersujud ke Tuhan?';
   }
 
   // 6. Take One Step
   const takeOneStep =
-    'Ambil jeda sejenak hari ini untuk memeriksa motivasi hati: lakukan tugas dan pelayanan dengan sukacita tanpa bersungut-sungut.';
+    'Ambil jeda 2 menit sebelum mulai nugas atau aktivitas hari ini: tarik napas, doakan satu hal yang paling bikin cemas, dan percaya Tuhan yang pegang kendali.';
 
   return {
     saintCommemoration,
@@ -158,22 +158,30 @@ export async function processDevotionalWithLLM(
 ): Promise<LLMProcessingResult> {
   const settings = await getAutomationSettings();
 
-  const prompt = `Anda adalah asisten liturgi Katolik terpercaya untuk MP Community. Tugas Anda adalah meringkas renungan harian Katolik berikut ke dalam format resmi "Coffee Break with God".
-  
+  const prompt = `Anda adalah sahabat rohani sekaligus asisten liturgi Katolik untuk komunitas anak muda dan mahasiswa "MP Community".
+Tugas Anda adalah merangkum renungan harian Katolik berikut ke dalam format resmi "Coffee Break with God" dengan gaya bahasa yang GAUL, SANTAI, HANGAT, KEKINIAN, dan SANGAT RELATABLE dengan kehidupan sehari-hari anak muda serta mahasiswa.
+
+Panduan Persona & Gaya Bahasa (Tone of Voice):
+- Target Audiens: Mahasiswa & anak muda (Gen Z / Young Adults).
+- Bahasa: Gaul santai, akrab (gunakan sapaan seperti "kita", "kamu"), luwes, TIDAK KAKU/FORMAL, tidak menggunakan bahasa kuno/kolot, dan tidak menggurui. Seperti obrolan hangat dari sahabat rohani yang saling menguatkan.
+- Konteks Nyata: Hubungkan refleksi secara natural dengan realita kehidupan anak muda & perkuliahan — misalnya: deadline tugas/kuis, skripsi, overthinking masa depan & karier, FOMO, burnout/lelah mental, scrolling sosmed tanpa sadar, drama circle pertemanan, relationship/gebetan, dan pentingnya nemuin damai sejati bareng Tuhan di sela rutinitas yang padat.
+
 Ketentuan ketat (Strict Rules):
-1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau referensi ayat yang tidak ada di dalam teks bacaan liturgi sumber.
+1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau teks firman. Ayat Alkitab harus asli dan akurat dari bacaan liturgi sumber Katolik.
 2. Pertahankan keaslian konteks teologis dan makna firman dari sumber Katolik.
 3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa).
-4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS nomor ayat spesifik yang tepat dari teks kutipan (contoh: 'Lukas 14:27' atau 'Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
-5. Ekstrak renungan singkat aplikatif (Today's Reflection 2-4 kalimat yang menguatkan), satu pertanyaan refleksi pribadi mendalam (Mind Check), dan satu tindakan konkrit hari ini (Take One Step).
-6. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
+4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Lukas 14:27' atau 'Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
+5. Buat "Today's Reflection" (2-4 kalimat): Renungan singkat yang mengena, hangat, gaul, dan nyambung banget sama realita anak muda/kuliahan.
+6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb" dan bikin mikir tentang motivasi hati, prioritas hidup, atau kebiasaan sehari-hari anak muda.
+7. Buat "Take One Step": Satu aksi konkrit praktis yang simpel dan bisa langsung dieksekusi mahasiswa/anak muda hari ini (misal: jeda 2 menit tanpa hp sebelum nugas, sapa teman yang lagi stres, serahin kecemasan ke Tuhan).
+8. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
 {
   "saint_commemoration": "nama peringatan santa/santo hari ini (contoh: Santo Karolus Boromeus, Uskup), atau kosongkan string jika tidak ada peringatan khusus",
   "verse_reference": "nomor ayat tunggal spesifik yang tepat, contoh: Lukas 14:27 (bukan rentang perikop)",
   "verse_text": "isi ayat Alkitab asli tanpa tambahan tafsiran",
-  "reflection": "renungan singkat aplikatif (2-4 kalimat)",
-  "mind_check": "pertanyaan refleksi pribadi yang mendalam",
-  "take_one_step": "langkah konkrit nyata hari ini"
+  "reflection": "renungan 2-4 kalimat bergaya bahasa gaul santai khas anak muda/kuliahan yang aplikatif",
+  "mind_check": "pertanyaan refleksi diri yang jleb dan relevan bagi anak muda",
+  "take_one_step": "langkah konkrit nyata hari ini yang simpel dan bisa langsung dilakukan"
 }
 
 Judul Artikel: ${rawTitle}
@@ -194,7 +202,7 @@ ${rawContent.substring(0, 5000)}
           {
             role: 'system',
             content:
-              'Anda adalah asisten liturgi Katolik terpercaya untuk MP Community. Kembalikan data HANYA dalam format JSON valid.',
+              'Anda adalah sahabat rohani anak muda dan mahasiswa Katolik di MP Community. Kemas renungan dengan bahasa gaul, santai, hangat, dan sangat relatable bagi kehidupan perkuliahan dan anak muda saat ini, tanpa mengubah keaslian isi ayat firman Tuhan. Kembalikan data HANYA dalam format JSON valid.',
           },
           {
             role: 'user',
@@ -202,7 +210,7 @@ ${rawContent.substring(0, 5000)}
           },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.2,
+        temperature: 0.4,
       });
 
       const jsonText = completion.choices[0]?.message?.content;
@@ -257,7 +265,7 @@ ${rawContent.substring(0, 5000)}
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               responseMimeType: 'application/json',
-              temperature: 0.2,
+              temperature: 0.4,
             },
           }),
         }
