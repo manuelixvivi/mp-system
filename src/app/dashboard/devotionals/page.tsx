@@ -45,7 +45,11 @@ export default function DevotionalManagementPage() {
     try {
       const res = await fetch('/api/cron/devotional-scrape', { method: 'POST' });
       const data = await res.json();
-      setScrapeResult({ success: true, message: data.message || 'Scraping berhasil dieksekusi!' });
+      if (data.success) {
+        setScrapeResult({ success: true, message: data.message || 'Scraping berhasil dieksekusi dan disimpan!' });
+      } else {
+        setScrapeResult({ success: false, message: data.message || data.error || 'Gagal menjalankan scraping' });
+      }
       await loadDevotionals();
     } catch (e: any) {
       setScrapeResult({ success: false, message: e.message || 'Gagal menjalankan scraping' });

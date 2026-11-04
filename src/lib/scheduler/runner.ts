@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   getDevotionals,
   getDevotionalByDate,
@@ -25,12 +26,31 @@ export interface JobExecutionResult {
 /**
  * 1. SCRAPING JOB: 00:00 WIB
  */
-export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Promise<JobExecutionResult> {
+export async function runDevotionalScrapeJob(
+  targetDate: Date = new Date(),
+  force: boolean = false
+): Promise<JobExecutionResult> {
   const dateIso = getWibIsoDate(targetDate);
   const settings = await getAutomationSettings();
 
   if (!settings.devotional_automation_active) {
     return { job: 'devotional_scrape', success: false, message: 'Devotional automation is disabled in settings.' };
+  }
+
+  // PRD & Policy: Sehari hanya boleh melakukan scraping sekali
+  const existingDevotional = await getDevotionalByDate(dateIso);
+  if (existingDevotional && !force) {
+    console.log(`[SCRAPER POLICY] Scraping untuk tanggal ${dateIso} sudah pernah dilakukan hari ini.`);
+    return {
+      job: 'devotional_scrape',
+      success: false,
+      message: `Scraping untuk tanggal ${dateIso} sudah pernah dilakukan hari ini. Sistem membatasi scraping hanya satu kali dalam sehari.`,
+      details: {
+        devotional_id: existingDevotional.id,
+        date: dateIso,
+        already_scraped: true,
+      },
+    };
   }
 
   try {
@@ -76,8 +96,7 @@ export async function runDevotionalScrapeJob(targetDate: Date = new Date()): Pro
     );
 
     // 3. Save structured devotional
-    const existingDevotional = await getDevotionalByDate(dateIso);
-    const devotionalId = existingDevotional?.id || `dev_${dateIso}_${Date.now()}`;
+    const devotionalId = existingDevotional?.id || randomUUID();
 
     await saveDevotional({
       id: devotionalId,

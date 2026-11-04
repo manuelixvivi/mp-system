@@ -73,10 +73,10 @@ export default function DevotionalAuditPage() {
       const res = await fetch(`/api/cron/devotional-scrape?date=${targetDate}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setNotification({ type: 'success', message: 'Scraping berhasil dieksekusi!' });
+        setNotification({ type: 'success', message: data.message || 'Scraping berhasil dieksekusi dan disimpan!' });
         await loadDevotional(targetDate);
       } else {
-        setNotification({ type: 'error', message: data.error || 'Gagal menjalankan scraping' });
+        setNotification({ type: 'error', message: data.message || data.error || 'Gagal menjalankan scraping' });
       }
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message || 'Terjadi kesalahan sistem' });

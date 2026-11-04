@@ -1084,10 +1084,17 @@ export async function getDevotionals(): Promise<Devotional[]> {
         .order('devotional_date', { ascending: false });
 
       if (!error && Array.isArray(data)) {
+        const hydrated = data.map((d: any) => {
+          if (!d.saint_commemoration && d.formatted_message) {
+            const m = d.formatted_message.match(/🕊️ Peringatan : (.*?)(?=\n|$)/);
+            if (m) d.saint_commemoration = m[1].trim();
+          }
+          return d as Devotional;
+        });
         const db = inMemoryDb || loadDatabase();
-        db.devotionals = data as Devotional[];
+        db.devotionals = hydrated;
         saveDatabase(db);
-        return data as Devotional[];
+        return hydrated;
       }
     } catch (err) {
       console.warn('Supabase getDevotionals warning:', err);
@@ -1106,6 +1113,10 @@ export async function getDevotionalByDate(dateStr: string): Promise<Devotional |
         .maybeSingle();
 
       if (!error && data) {
+        if (!data.saint_commemoration && data.formatted_message) {
+          const m = data.formatted_message.match(/🕊️ Peringatan : (.*?)(?=\n|$)/);
+          if (m) data.saint_commemoration = m[1].trim();
+        }
         return data as Devotional;
       }
     } catch (err) {}
@@ -1123,6 +1134,10 @@ export async function getDevotionalById(id: string): Promise<Devotional | undefi
         .maybeSingle();
 
       if (!error && data) {
+        if (!data.saint_commemoration && data.formatted_message) {
+          const m = data.formatted_message.match(/🕊️ Peringatan : (.*?)(?=\n|$)/);
+          if (m) data.saint_commemoration = m[1].trim();
+        }
         return data as Devotional;
       }
     } catch (err) {}
@@ -1131,6 +1146,14 @@ export async function getDevotionalById(id: string): Promise<Devotional | undefi
 }
 
 export async function saveDevotional(devotional: Devotional): Promise<Devotional> {
+  const isUuid = (str: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+
+  // Ensure UUID for Supabase compatibility
+  if (!devotional.id || !isUuid(devotional.id)) {
+    devotional.id = randomUUID();
+  }
+
   const db = loadDatabase();
   const idx = db.devotionals.findIndex((d) => d.id === devotional.id || d.devotional_date === devotional.devotional_date);
   if (idx !== -1) {
@@ -1142,7 +1165,29 @@ export async function saveDevotional(devotional: Devotional): Promise<Devotional
 
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('devotionals').upsert([devotional]);
+      // Send ONLY columns that exist in the Supabase devotionals table schema
+      const supaPayload = {
+        id: devotional.id,
+        devotional_date: devotional.devotional_date,
+        verse_reference: devotional.verse_reference,
+        verse_text: devotional.verse_text,
+        reflection: devotional.reflection,
+        mind_check: devotional.mind_check,
+        take_one_step: devotional.take_one_step,
+        formatted_message: devotional.formatted_message,
+        audit_status: devotional.audit_status || 'pending',
+        is_fallback_eligible: devotional.is_fallback_eligible ?? true,
+        created_at: devotional.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('devotionals')
+        .upsert([supaPayload], { onConflict: 'devotional_date' });
+
+      if (error) {
+        console.error('Supabase saveDevotional error:', error);
+      }
     } catch (err) {
       console.warn('Supabase saveDevotional error:', err);
     }
@@ -1165,6 +1210,10 @@ export async function updateDevotionalAudit(
   db.devotionals[idx].last_audited_by = auditorName;
   db.devotionals[idx].last_audited_at = now;
   db.devotionals[idx].updated_at = now;
+  if (notes) {
+    db.devotionals[idx].audit_notes = notes;
+  }
+  saveDatabase(db);
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -1172,8 +1221,6 @@ export async function updateDevotionalAudit(
         .from('devotionals')
         .update({
           audit_status: auditStatus,
-          last_audited_by: auditorName,
-          last_audited_at: now,
           updated_at: now,
         })
         .eq('id', id);

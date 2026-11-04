@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    const result = await runDevotionalScrapeJob(targetDate);
+    const force = searchParams.get('force') === 'true';
+    const result = await runDevotionalScrapeJob(targetDate, force);
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

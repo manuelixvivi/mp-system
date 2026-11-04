@@ -133,6 +133,7 @@ export interface Devotional {
   revisions_count?: number;
   last_audited_by?: string;
   last_audited_at?: string;
+  audit_notes?: string;
   created_at: string;
   updated_at?: string;
 }
