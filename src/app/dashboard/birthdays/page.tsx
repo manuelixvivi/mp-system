@@ -29,7 +29,13 @@ import {
   Sparkles,
   BookOpen,
   X,
+  FileSpreadsheet,
+  UploadCloud,
+  Download,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
+import { parseMemberExcelBuffer } from '@/lib/excel/member-parser';
 
 const MONTH_NAMES = [
   'Semua Bulan',
@@ -117,6 +123,66 @@ export default function BirthdayManagementPage() {
   const [selectedGroup, setSelectedGroup] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Excel Upload States
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadParsing, setUploadParsing] = useState(false);
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadParsedResult, setUploadParsedResult] = useState<{
+    validMembers: any[];
+    errors: { row: number; error: string; data: any }[];
+    totalRows: number;
+  } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+    setUploadParsing(true);
+    setUploadError(null);
+    setUploadParsedResult(null);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = parseMemberExcelBuffer(buffer);
+      setUploadParsedResult(result);
+    } catch (err: any) {
+      setUploadError(err.message || 'Gagal membaca file Excel. Pastikan format file .xlsx valid.');
+    } finally {
+      setUploadParsing(false);
+    }
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!uploadParsedResult || uploadParsedResult.validMembers.length === 0) return;
+    setUploadSubmitting(true);
+    setUploadError(null);
+
+    try {
+      const res = await fetch('/api/members/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ members: uploadParsedResult.validMembers }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        showNotification(data.message || `Berhasil mengimpor ${data.count} anggota!`, 'success');
+        setShowUploadModal(false);
+        setUploadFile(null);
+        setUploadParsedResult(null);
+        await loadData();
+      } else {
+        setUploadError(data.error || 'Gagal mengimpor anggota');
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Terjadi kesalahan sistem saat mengimpor.');
+    } finally {
+      setUploadSubmitting(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -410,13 +476,28 @@ export default function BirthdayManagementPage() {
           </Link>
 
           {(currentRole === 'superadmin' || currentRole === 'logistik') && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Anggota</span>
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setUploadFile(null);
+                  setUploadParsedResult(null);
+                  setUploadError(null);
+                  setShowUploadModal(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-amber-700" />
+                <span>Upload Excel (.xlsx)</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Anggota</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1338,6 +1419,199 @@ export default function BirthdayManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* EXCEL UPLOAD MODAL */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Import Data Anggota Ulang Tahun (.xlsx)</h3>
+                  <p className="text-[11px] text-slate-500">Upload spreadsheet Excel untuk menambahkan data anggota secara massal.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadFile(null);
+                  setUploadParsedResult(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Template Banner */}
+            <div className="p-3.5 bg-amber-50/80 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div>
+                <p className="font-bold text-amber-900">Belum punya format Excel?</p>
+                <p className="text-amber-700 text-[11px] mt-0.5">
+                  Unduh template resmi dengan format kolom tanggal lahir yang sudah disesuaikan.
+                </p>
+              </div>
+              <a
+                href="/api/members/template"
+                download="template_anggota_ulang_tahun.xlsx"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold shrink-0 shadow-sm transition-all text-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Template (.xlsx)</span>
+              </a>
+            </div>
+
+            {/* File Upload Dropzone */}
+            <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-emerald-500 transition-colors bg-slate-50/50">
+              <input
+                type="file"
+                id="excelFileInput"
+                accept=".xlsx, .xls"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <label htmlFor="excelFileInput" className="cursor-pointer block space-y-2">
+                <div className="p-3 bg-white rounded-full border border-slate-200 w-fit mx-auto text-emerald-600 shadow-sm">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="font-semibold text-emerald-600 text-xs hover:underline">
+                    {uploadFile ? uploadFile.name : 'Pilih file Excel (.xlsx / .xls)'}
+                  </span>
+                  <p className="text-[11px] text-slate-400 mt-0.5">atau drag and drop file ke sini</p>
+                </div>
+              </label>
+            </div>
+
+            {/* Parsing Spinner */}
+            {uploadParsing && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center text-xs text-slate-600 flex items-center justify-center space-x-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                <span>Membaca dan memvalidasi baris spreadsheet...</span>
+              </div>
+            )}
+
+            {/* Upload Error */}
+            {uploadError && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
+            {/* Preview Section */}
+            {uploadParsedResult && (
+              <div className="space-y-3 pt-2 text-xs">
+                {/* Stats row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-semibold text-[11px]">
+                    Total: {uploadParsedResult.totalRows} baris
+                  </span>
+                  <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg font-semibold text-[11px]">
+                    ✓ Siap Diimpor: {uploadParsedResult.validMembers.length}
+                  </span>
+                  {uploadParsedResult.errors.length > 0 && (
+                    <span className="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-lg font-semibold text-[11px]">
+                      ✕ Dilewati: {uploadParsedResult.errors.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Errors notification if any */}
+                {uploadParsedResult.errors.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] max-h-28 overflow-y-auto space-y-1">
+                    <p className="font-bold text-amber-950">Catatan Validasi Baris:</p>
+                    {uploadParsedResult.errors.map((e, idx) => (
+                      <p key={idx}>
+                        • Baris {e.row}: <span className="font-medium text-rose-700">{e.error}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Table Preview */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="max-h-48 overflow-y-auto">
+                    <table className="w-full text-[11px] text-left">
+                      <thead className="bg-slate-100 text-slate-600 font-semibold sticky top-0">
+                        <tr>
+                          <th className="p-2">Nama Lengkap</th>
+                          <th className="p-2">Tgl Lahir</th>
+                          <th className="p-2">Kelas</th>
+                          <th className="p-2">LINE ID</th>
+                          <th className="p-2">Instagram</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {uploadParsedResult.validMembers.slice(0, 10).map((m, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 font-medium text-slate-900">
+                              {m.full_name}
+                              {m.baptismal_name && (
+                                <span className="text-[10px] text-slate-400 block font-normal">{m.baptismal_name}</span>
+                              )}
+                            </td>
+                            <td className="p-2 text-slate-700">
+                              {m.birth_date}/{m.birth_month}
+                              {m.birth_year ? `/${m.birth_year}` : ''}
+                            </td>
+                            <td className="p-2 text-slate-500">{m.class_origin || '-'}</td>
+                            <td className="p-2 text-slate-500 font-mono text-[10px]">{m.line_user_id || '-'}</td>
+                            <td className="p-2 text-slate-500">{m.instagram_account || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {uploadParsedResult.validMembers.length > 10 && (
+                    <div className="p-2 bg-slate-50 text-center text-[10px] text-slate-500 border-t border-slate-200">
+                      Menampilkan 10 dari {uploadParsedResult.validMembers.length} anggota yang akan disimpan.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadFile(null);
+                  setUploadParsedResult(null);
+                }}
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadSubmit}
+                disabled={uploadSubmitting || !uploadParsedResult || uploadParsedResult.validMembers.length === 0}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-500 shadow-sm disabled:opacity-50 flex items-center space-x-1.5"
+              >
+                {uploadSubmitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan ke Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>
+                      {uploadParsedResult
+                        ? `Simpan ${uploadParsedResult.validMembers.length} Anggota`
+                        : 'Simpan Anggota'}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -994,6 +994,63 @@ export async function createMember(member: Omit<Member, 'id' | 'created_at'>): P
   return newMember;
 }
 
+export async function createMembersBulk(
+  membersToCreate: Omit<Member, 'id' | 'created_at'>[]
+): Promise<Member[]> {
+  if (!membersToCreate || membersToCreate.length === 0) return [];
+
+  const now = new Date().toISOString();
+  const newMembers: Member[] = membersToCreate.map((m) => ({
+    ...m,
+    id: randomUUID(),
+    created_at: now,
+    status: m.status || 'active',
+    line_verification_status: m.line_user_id && m.line_user_id.trim().length > 0 ? 'verified' : 'not_set',
+  }));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 1. Try inserting all columns
+      const { data, error } = await supabase.from('members').insert(newMembers).select();
+      if (!error && Array.isArray(data)) {
+        const db = inMemoryDb || loadDatabase();
+        db.members.push(...newMembers);
+        saveDatabase(db);
+        return newMembers;
+      }
+
+      // 2. Fall back to base columns if newly added columns aren't in Supabase schema cache
+      if (error) {
+        console.warn('Supabase bulk insert warning, falling back to base columns:', error.message);
+        const basePayload = newMembers.map((m) => ({
+          id: m.id,
+          full_name: m.full_name,
+          birth_date: m.birth_date,
+          birth_month: m.birth_month,
+          birth_year: m.birth_year,
+          line_user_id: m.line_user_id || '',
+          line_display_name: m.line_display_name || m.full_name,
+          line_verification_status: m.line_verification_status,
+          status: m.status,
+          notes: m.notes,
+          created_at: m.created_at,
+        }));
+        const { error: baseErr } = await supabase.from('members').insert(basePayload);
+        if (baseErr) {
+          console.error('Supabase createMembersBulk error:', baseErr.message);
+        }
+      }
+    } catch (err: any) {
+      console.error('Supabase createMembersBulk exception:', err);
+    }
+  }
+
+  const db = loadDatabase();
+  db.members.push(...newMembers);
+  saveDatabase(db);
+  return newMembers;
+}
+
 export async function updateMember(id: string, updates: Partial<Member>): Promise<Member | null> {
   const now = new Date().toISOString();
   if (isSupabaseConfigured && supabase) {
