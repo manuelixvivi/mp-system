@@ -5,8 +5,10 @@ import {
   addActivityLog,
   getDevotionalByDate,
   getMembers,
+  createMember,
   updateMember,
   getLineGroups,
+  getAutomationSettings,
   updateDevotionalAudit,
   addDelivery,
   ensureLineGroupTracked,
@@ -14,6 +16,8 @@ import {
 import { LineApiClient } from './client';
 import { UserRole, LineGroup } from '@/types';
 import { getWibParts, getWibIsoDate } from '../time';
+import { parseRegistrationText } from './registration-helper';
+import { uploadPhotoToDriveOrLocal } from '../drive/client';
 
 // Pending confirmation memory store for personal chat sessions
 interface PendingAction {
@@ -24,6 +28,26 @@ interface PendingAction {
 }
 
 const pendingActions = new Map<string, PendingAction>();
+
+// Pending member self-registration store
+interface PendingMemberRegistration {
+  lineUserId: string;
+  fullName: string;
+  baptismalName?: string;
+  lineId?: string;
+  instagram?: string;
+  classOrigin?: string;
+  entryYear?: number;
+  birthDate: number;
+  birthMonth: number;
+  birthYear?: number;
+  whatsapp?: string;
+  photoUrl?: string;
+  step: 'awaiting_photo' | 'awaiting_confirmation';
+  expiresAt: number;
+}
+
+const pendingMemberRegistrations = new Map<string, PendingMemberRegistration>();
 
 function formatGroupListMessage(groups: LineGroup[]): string {
   if (!groups || groups.length === 0) {
@@ -165,15 +189,168 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
   }
 
   // RULE 2: PERSONAL CHAT HANDLING (PRD 3.3)
-  if (event.source?.type !== 'user' || event.type !== 'message' || event.message?.type !== 'text') {
-    return { status: 'ignored_non_text_event' };
+  if (event.source?.type !== 'user' || event.type !== 'message') {
+    return { status: 'ignored_non_personal_message_event' };
   }
 
   const lineUserId = event.source.userId;
-  const rawText = (event.message.text || '').trim();
   const replyToken = event.replyToken;
 
-  // 1. Check for Account Registration Command (/registrasi_akun <TOKEN>)
+  // 1. Handle Image Upload from Pending Member Registration
+  if (event.message?.type === 'image') {
+    const pending = pendingMemberRegistrations.get(lineUserId);
+    if (!pending) {
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, [
+          {
+            type: 'text',
+            text: '📸 Foto Anda diterima. Untuk melakukan pendaftaran anggota baru, silakan kirim data diri Anda terlebih dahulu dengan format /registrasi.',
+          },
+        ]);
+      }
+      return { status: 'ignored_unregistered_image' };
+    }
+
+    const imageBuffer = await lineClient.getMessageContent(event.message.id);
+    if (!imageBuffer) {
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, [
+          {
+            type: 'text',
+            text: '⚠️ Maaf, gagal mengunduh foto dari server LINE. Silakan coba kirim ulang foto Anda.',
+          },
+        ]);
+      }
+      return { status: 'image_download_failed' };
+    }
+
+    // Upload to Google Drive / local storage
+    const uploadResult = await uploadPhotoToDriveOrLocal(
+      `member_${lineUserId}_${Date.now()}.jpg`,
+      'image/jpeg',
+      imageBuffer
+    );
+
+    pending.photoUrl = uploadResult.url;
+    pending.step = 'awaiting_confirmation';
+    pendingMemberRegistrations.set(lineUserId, pending);
+
+    // Send LINE Flex Message Confirmation Card
+    const flexMessage = LineApiClient.buildRegistrationConfirmationFlex({
+      fullName: pending.fullName,
+      baptismalName: pending.baptismalName,
+      lineId: pending.lineId,
+      instagram: pending.instagram,
+      classOrigin: pending.classOrigin,
+      entryYear: pending.entryYear,
+      birthDate: pending.birthDate,
+      birthMonth: pending.birthMonth,
+      birthYear: pending.birthYear,
+      whatsapp: pending.whatsapp,
+      photoUrl: uploadResult.url,
+    });
+
+    if (replyToken) {
+      await lineClient.replyMessage(replyToken, [flexMessage]);
+    }
+
+    return { status: 'sent_registration_confirmation_flex', lineUserId, photoUrl: uploadResult.url };
+  }
+
+  // From here on, text messages only
+  if (event.message?.type !== 'text') {
+    return { status: 'ignored_non_text_message' };
+  }
+
+  const rawText = (event.message.text || '').trim();
+
+  // 1a. Check for /registrasi (Self-registration by new community members)
+  if (rawText.toLowerCase().includes('/registrasi') && !rawText.toLowerCase().startsWith('/registrasi_akun')) {
+    const parsed = parseRegistrationText(rawText);
+    if (!parsed) {
+      const formatGuide = `⚠️ FORMAT REGISTRASI TIDAK LENGKAP\n\nSilakan salin dan lengkapi format pendaftaran berikut:\n\n/registrasi\nNama Lengkap : [Nama Lengkap Anda]\nNama Baptis : [Nama Baptis atau -]\nIDLine : [ID LINE Anda]\nInstagram : [Akun IG]\nKelas : [Asal Kelas]\nTahun Masuk : [Tahun Masuk / Angkatan]\nTanggal lahir : [Contoh: 05 November 2004]\nNomor Whatsapp : [08123456789]`;
+      if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: formatGuide }]);
+      return { status: 'invalid_member_registration_format' };
+    }
+
+    pendingMemberRegistrations.set(lineUserId, {
+      ...parsed,
+      lineUserId,
+      step: 'awaiting_photo',
+      expiresAt: Date.now() + 1800000, // 30 minutes
+    });
+
+    const reply = `📋 DATA PENDAFTARAN DICATAT!\n\nHalo ${parsed.fullName}! Data diri Anda telah kami simpan sementara.\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto/foto formal) di obrolan ini sebagai lampiran profil keanggotaan.\n\nFoto Anda akan diunggah aman ke arsip Google Drive komunitas dan digunakan untuk pembuatan kartu ucapan ulang tahun MP Community.`;
+
+    if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
+    return { status: 'awaiting_member_photo', lineUserId };
+  }
+
+  // 1b. Check for /konfirmasi_reg
+  if (rawText.toLowerCase() === '/konfirmasi_reg') {
+    const pending = pendingMemberRegistrations.get(lineUserId);
+    if (!pending || !pending.photoUrl) {
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, [
+          {
+            type: 'text',
+            text: '⚠️ Tidak ada data pendaftaran yang siap dikonfirmasi atau Anda belum mengunggah foto. Silakan ketik /registrasi untuk memulai pendaftaran baru.',
+          },
+        ]);
+      }
+      return { status: 'no_pending_registration' };
+    }
+
+    // Save member to database
+    const newMember = await createMember({
+      full_name: pending.fullName,
+      baptismal_name: pending.baptismalName,
+      line_id: pending.lineId,
+      line_user_id: lineUserId,
+      instagram_account: pending.instagram,
+      class_origin: pending.classOrigin,
+      entry_year: pending.entryYear,
+      birth_date: pending.birthDate,
+      birth_month: pending.birthMonth,
+      birth_year: pending.birthYear,
+      whatsapp_number: pending.whatsapp,
+      photo_url: pending.photoUrl,
+      community_role: 'anggota_aktif',
+      status: 'active',
+      line_verification_status: 'verified',
+    });
+
+    pendingMemberRegistrations.delete(lineUserId);
+
+    // Get group invite link from settings or active groups
+    const settings = await getAutomationSettings();
+    const allGroups = await getLineGroups();
+    const defaultGroup = allGroups.find((g) => g.is_active);
+    const groupLink =
+      (settings as any).group_invite_link ||
+      (defaultGroup ? `https://line.me/R/ti/g/${defaultGroup.group_id}` : 'https://line.me/ti/g/mp_community_official');
+
+    const welcomeMsg = `🎉 SELAMAT BERGABUNG DI MP COMMUNITY! ✝️\n\nHalo ${pending.fullName}!\nData pendaftaran Anda telah resmi terverifikasi dan tersimpan dalam sistem database MP Community.\n\nFoto Anda telah tersimpan aman di Google Drive komunitas.\n\n👥 TAUTAN GRUP LINE:\nSilakan klik tautan di bawah ini untuk langsung bergabung ke Grup LINE Komunitas MP:\n👉 ${groupLink}\n\nSampai jumpa di kegiatan komunitas dan Tuhan memberkati! 🙏✨`;
+
+    if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: welcomeMsg }]);
+    return { status: 'registration_confirmed', memberId: newMember.id };
+  }
+
+  // 1c. Check for /batal_reg
+  if (rawText.toLowerCase() === '/batal_reg') {
+    pendingMemberRegistrations.delete(lineUserId);
+    if (replyToken) {
+      await lineClient.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: '❌ Pendaftaran dibatalkan. Anda dapat mengirimkan ulang format /registrasi kapan saja saat sudah siap.',
+        },
+      ]);
+    }
+    return { status: 'registration_cancelled', lineUserId };
+  }
+
+  // 1d. Check for Account Registration Command for Staff/Petugas (/registrasi_akun <TOKEN>)
   const matchReg = rawText.match(/^\/registrasi_akun(?:\s+([A-Za-z0-9_-]+))?$/i);
   if (matchReg) {
     const token = (matchReg[1] || '').trim().toUpperCase();
@@ -196,6 +373,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
       superadmin: 'Superadmin (Akses Penuh)',
       liturgi: 'Tim Liturgi (Audit & Renungan)',
       logistik: 'Tim Logistik (Anggota & Ulang Tahun)',
+      pubdok: 'Tim Pubdok (Editor Desain & Kartu Ultah)',
     };
 
     const reply = `🎉 REGISTRASI AKUN BERHASIL!\n\nHalo ${prof.name}! Akun petugas Anda telah resmi diaktivasi dan ditautkan dengan akun LINE ini.\n\n👤 Nama Petugas: ${prof.name}\n📧 Email: ${prof.email}\n🛡️ Hak Akses: ${roleLabels[prof.role] || prof.role}\n📱 LINE User ID: ${lineUserId}\n\n💡 Perintah Bot yang dapat Anda gunakan:\n• /menu — Tampilkan menu aksi\n• /status — Cek status otomatisasi hari ini\n• /help — Bantuan perintah bot\n\nAnda juga sudah dapat login ke Web Dashboard MP Control System menggunakan email dan password Anda.`;
@@ -204,7 +382,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
     return { status: 'activation_success', text: reply, profile: prof };
   }
 
-  // 1b. Check for /myid or /id command (accessible by anyone)
+  // 1e. Check for /myid or /id command (accessible by anyone)
   if (rawText.toLowerCase() === '/myid' || rawText.toLowerCase() === '/id') {
     const reply = `🆔 LINE USER ID ANDA:\n\n${lineUserId}\n\n💡 Salin ID di atas dan masukkan ke data anggota (Web Dashboard / Excel) agar bot dapat melakukan mention/tag otomatis saat ulang tahun.`;
     if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
@@ -486,7 +664,14 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 }
 
 function getHelpMessage(role: UserRole, userName: string): string {
-  const roleName = role === 'superadmin' ? 'Superadmin' : role === 'liturgi' ? 'Tim Liturgi' : 'Tim Logistik';
+  const roleName =
+    role === 'superadmin'
+      ? 'Superadmin'
+      : role === 'liturgi'
+      ? 'Tim Liturgi'
+      : role === 'logistik'
+      ? 'Tim Logistik'
+      : 'Tim Pubdok';
 
   let commands = `📋 BANTUAN PERINTAH MP CONTROL BOT\n\nHalo, ${userName} (${roleName})!\nBerikut perintah yang dapat Anda gunakan:\n\n• /menu — Tampilkan ringkasan menu wewenang\n• /status — Cek status otomatisasi & jadwal\n• /myid — Cek LINE User ID akun Anda untuk tag ultah\n• /help — Tampilkan pesan panduan ini\n`;
 
@@ -502,12 +687,23 @@ function getHelpMessage(role: UserRole, userName: string): string {
     commands += `\n[Modul Ulang Tahun]\n• /broadcast birthday — Broadcast manual ucapan ulang tahun\n`;
   }
 
+  if (role === 'superadmin' || role === 'pubdok') {
+    commands += `\n[Modul Pubdok]\n• Buka Dashboard Studio Pubdok untuk edit kartu ultah: /dashboard/pubdok/editor\n`;
+  }
+
   commands += `\n💡 Semua perintah broadcast akan meminta konfirmasi (/confirm) sebelum dikirim ke grup.`;
   return commands;
 }
 
 function getMenuMessage(role: UserRole, userName: string): string {
-  const roleBadge = role === 'superadmin' ? '🛡️ SUPERADMIN' : role === 'liturgi' ? '📖 TIM LITURGI' : '📦 TIM LOGISTIK';
+  const roleBadge =
+    role === 'superadmin'
+      ? '🛡️ SUPERADMIN'
+      : role === 'liturgi'
+      ? '📖 TIM LITURGI'
+      : role === 'logistik'
+      ? '📦 TIM LOGISTIK'
+      : '🎨 TIM PUBDOK';
 
   let msg = `╔═══════════════════════╗\n  MP CONTROL SYSTEM BOT\n╚═══════════════════════╝\n\n👤 Pengguna: ${userName}\nRole: ${roleBadge}\n\nPilih aksi dengan mengetik perintah:\n\n1️⃣ /status — Pantau status sistem hari ini\n`;
 
@@ -521,6 +717,10 @@ function getMenuMessage(role: UserRole, userName: string): string {
 
   if (role === 'superadmin' || role === 'logistik') {
     msg += `5️⃣ /broadcast birthday — Kirim ucapan ultah hari ini\n`;
+  }
+
+  if (role === 'superadmin' || role === 'pubdok') {
+    msg += `🎨 Menu Pubdok: Buka Editor Kartu Ultah di Dashboard Web\n`;
   }
 
   msg += `\nℹ️ Akses dashboard web lengkap di: https://mp-control.vercel.app`;

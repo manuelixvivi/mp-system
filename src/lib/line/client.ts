@@ -191,6 +191,201 @@ export class LineApiClient {
   }
 
   /**
+   * Download binary content (image/video/file) from LINE Content API
+   */
+  async getMessageContent(messageId: string): Promise<Buffer | null> {
+    if (!this.channelAccessToken || !messageId) return null;
+    try {
+      const response = await fetch(
+        `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.channelAccessToken}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      } else {
+        console.warn(`[LINE CLIENT] getMessageContent failed with HTTP ${response.status}`);
+      }
+    } catch (err: any) {
+      console.warn('[LINE CLIENT] getMessageContent exception:', err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Builds an interactive LINE Flex Message card for member registration confirmation
+   */
+  static buildRegistrationConfirmationFlex(data: {
+    fullName: string;
+    baptismalName?: string;
+    lineId?: string;
+    instagram?: string;
+    classOrigin?: string;
+    entryYear?: number;
+    birthDate: number;
+    birthMonth: number;
+    birthYear?: number;
+    whatsapp?: string;
+    photoUrl: string;
+  }) {
+    const monthNames = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    const monthStr = monthNames[(data.birthMonth || 1) - 1] || `${data.birthMonth}`;
+    const birthStr = `${data.birthDate} ${monthStr} ${data.birthYear || ''}`.trim();
+
+    const infoRows = [
+      { label: '👤 Nama Lengkap', value: data.fullName },
+      { label: '🕊️ Nama Baptis', value: data.baptismalName || '-' },
+      { label: '💬 ID LINE', value: data.lineId || '-' },
+      { label: '📸 Instagram', value: data.instagram ? `@${data.instagram.replace(/^@/, '')}` : '-' },
+      { label: '🏫 Kelas', value: data.classOrigin || '-' },
+      { label: '🎓 Angkatan', value: data.entryYear ? `${data.entryYear}` : '-' },
+      { label: '🎂 Tgl Lahir', value: birthStr },
+      { label: '📱 WhatsApp', value: data.whatsapp || '-' },
+    ];
+
+    const bodyContents: any[] = [
+      {
+        type: 'text',
+        text: data.fullName,
+        weight: 'bold',
+        size: 'lg',
+        color: '#111827',
+      },
+      {
+        type: 'text',
+        text: 'Calon Anggota Baru MP Community',
+        size: 'xs',
+        color: '#6B7280',
+        margin: 'xs',
+      },
+      {
+        type: 'separator',
+        margin: 'md',
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        margin: 'md',
+        spacing: 'sm',
+        contents: infoRows.map((r) => ({
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: r.label,
+              size: 'xs',
+              color: '#4B5563',
+              flex: 4,
+            },
+            {
+              type: 'text',
+              text: r.value,
+              size: 'xs',
+              color: '#111827',
+              weight: 'bold',
+              flex: 6,
+              wrap: true,
+            },
+          ],
+        })),
+      },
+    ];
+
+    return {
+      type: 'flex',
+      altText: `Konfirmasi Pendaftaran: ${data.fullName}`,
+      contents: {
+        type: 'bubble',
+        size: 'mega',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#1E3A8A',
+          paddingAll: 'lg',
+          contents: [
+            {
+              type: 'text',
+              text: '📋 KONFIRMASI DATA PENDAFTARAN',
+              weight: 'bold',
+              color: '#FFFFFF',
+              size: 'sm',
+            },
+            {
+              type: 'text',
+              text: 'Pastikan seluruh data dan foto Anda sudah benar.',
+              color: '#93C5FD',
+              size: 'xs',
+              margin: 'xs',
+            },
+          ],
+        },
+        hero: {
+          type: 'image',
+          url: data.photoUrl,
+          size: 'full',
+          aspectRatio: '1:1',
+          aspectMode: 'cover',
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          paddingAll: 'lg',
+          contents: bodyContents,
+        },
+        footer: {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'sm',
+          paddingAll: 'lg',
+          contents: [
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#059669',
+              height: 'sm',
+              action: {
+                type: 'message',
+                label: '✅ Konfirmasi & Masuk Grup',
+                text: '/konfirmasi_reg',
+              },
+            },
+            {
+              type: 'button',
+              style: 'secondary',
+              height: 'sm',
+              action: {
+                type: 'message',
+                label: '✏️ Batal / Ulangi',
+                text: '/batal_reg',
+              },
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  /**
    * Format Birthday Message with Native LINE Mention (textV2 API) or Text Fallback
    * PRD Requirement: Max 20 mentions per batch, no teddy bears.
    */

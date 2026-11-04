@@ -13,6 +13,7 @@ import {
   Shield,
   BookOpen,
   Package,
+  Palette,
   LogOut,
   Key,
   Lock,
@@ -97,6 +98,11 @@ export default function Topbar() {
       title: 'Tim Logistik',
       badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
       icon: Package,
+    },
+    pubdok: {
+      title: 'Tim Pubdok',
+      badgeColor: 'bg-rose-100 text-rose-700 border-rose-200',
+      icon: Palette,
     },
   };
 

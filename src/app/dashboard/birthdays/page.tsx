@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
 import { useServerTime } from '@/context/ServerTimeContext';
-import { Member, LineGroup } from '@/types';
+import { Member, LineGroup, MemberCommunityRole } from '@/types';
 import {
   Gift,
   Plus,
@@ -33,6 +33,7 @@ import {
   UploadCloud,
   Download,
   CheckCircle2,
+  Palette,
   RefreshCw,
 } from 'lucide-react';
 import { parseMemberExcelBuffer } from '@/lib/excel/member-parser';
@@ -67,6 +68,18 @@ const MONTH_SHORT = [
   'OKT',
   'NOV',
   'DES',
+];
+
+const COMMUNITY_ROLES: { id: MemberCommunityRole; label: string; badge: string }[] = [
+  { id: 'anggota_aktif', label: 'Anggota Aktif', badge: 'bg-slate-100 text-slate-700 border-slate-200' },
+  { id: 'ketua', label: 'Ketua', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { id: 'wakil_ketua', label: 'Wakil Ketua', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
+  { id: 'bendahara', label: 'Bendahara', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  { id: 'sekretaris', label: 'Sekretaris', badge: 'bg-purple-100 text-purple-800 border-purple-300' },
+  { id: 'liturgi_humas', label: 'Liturgi & Humas', badge: 'bg-orange-100 text-orange-800 border-orange-300' },
+  { id: 'logistik', label: 'Logistik', badge: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+  { id: 'pubdok', label: 'Pubdok', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
+  { id: 'acara', label: 'Acara', badge: 'bg-teal-100 text-teal-800 border-teal-300' },
 ];
 
 // Instagram SVG Icon Component
@@ -209,6 +222,25 @@ export default function BirthdayManagementPage() {
   const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
     setActionMessage({ text, type });
     setTimeout(() => setActionMessage(null), 4000);
+  };
+
+  const handleUpdateMemberRole = async (memberId: string, newRole: MemberCommunityRole) => {
+    try {
+      const res = await fetch('/api/members', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: memberId, community_role: newRole }),
+      });
+      if (res.ok) {
+        showNotification('Jabatan/role anggota berhasil diperbarui!');
+        loadData();
+      } else {
+        const err = await res.json();
+        showNotification(err.error || 'Gagal mengubah jabatan', 'error');
+      }
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -766,6 +798,36 @@ export default function BirthdayManagementPage() {
                         </span>
                       )}
                     </div>
+
+                    {/* Role / Jabatan di Komunitas MP */}
+                    <div className="mt-2.5 flex items-center space-x-1.5">
+                      {currentRole === 'superadmin' ? (
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-slate-400 font-bold uppercase text-[9px] font-mono">ROLE:</span>
+                          <select
+                            value={member.community_role || 'anggota_aktif'}
+                            onChange={(e) => handleUpdateMemberRole(member.id, e.target.value as MemberCommunityRole)}
+                            className="bg-slate-50 border border-slate-300 rounded px-1.5 py-0.5 font-bold text-slate-800 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            {COMMUNITY_ROLES.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
+                            COMMUNITY_ROLES.find((r) => r.id === (member.community_role || 'anggota_aktif'))?.badge ||
+                            'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {COMMUNITY_ROLES.find((r) => r.id === (member.community_role || 'anggota_aktif'))?.label ||
+                            'Anggota Aktif'}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* CELL 2: FLIGHT LEVEL (FL) & BIRTH DATE */}
@@ -847,13 +909,23 @@ export default function BirthdayManagementPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
-                      <button
-                        onClick={() => setSelectedStrip(member)}
-                        className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>DETAIL</span>
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setSelectedStrip(member)}
+                          className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>DETAIL</span>
+                        </button>
+                        <Link
+                          href="/dashboard/pubdok/editor"
+                          className="text-rose-600 hover:text-rose-700 font-bold flex items-center space-x-1 text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200"
+                          title="Buka Editor Kartu Ultah Pubdok"
+                        >
+                          <Palette className="w-3 h-3" />
+                          <span>KARTU</span>
+                        </Link>
+                      </div>
 
                       <div className="flex items-center space-x-2">
                         {member.line_user_id && (

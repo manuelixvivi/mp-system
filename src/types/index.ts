@@ -1,6 +1,17 @@
 // MP Control System - Type Definitions
 
-export type UserRole = 'superadmin' | 'liturgi' | 'logistik';
+export type UserRole = 'superadmin' | 'liturgi' | 'logistik' | 'pubdok';
+
+export type MemberCommunityRole =
+  | 'anggota_aktif'
+  | 'ketua'
+  | 'wakil_ketua'
+  | 'bendahara'
+  | 'sekretaris'
+  | 'liturgi_humas'
+  | 'logistik'
+  | 'pubdok'
+  | 'acara';
 
 export interface Profile {
   id: string;
@@ -53,16 +64,37 @@ export interface Member {
   birth_date: number; // 1-31 (Tanggal Lahir)
   birth_month: number; // 1-12 (Bulan Lahir)
   birth_year?: number; // Tahun Lahir
-  class_origin?: string; // Asal Kelas (misal: XII MIPA 1, XI-A)
+  class_origin?: string; // Asal Kelas (misal: XII MIPA 1, XI-A, PPTI 26)
   entry_year?: number; // Tahun Masuk (untuk filter angkatan)
-  line_id?: string; // ID LINE publik (misal: @cukurukuk)
+  line_id?: string; // ID LINE publik (misal: @cukurukuk0906)
   line_user_id?: string; // Akun LINE (User ID acak U...)
   line_display_name?: string;
   instagram_account?: string; // Akun Instagram (misal: @username)
+  whatsapp_number?: string; // Nomor WhatsApp
+  photo_url?: string; // Foto diri anggota (dari registrasi atau drive)
+  birthday_card_url?: string; // Hasil edit kartu ultah oleh pubdok
+  community_role?: MemberCommunityRole; // Role di komunitas MP
   line_verification_status: 'verified' | 'unverified' | 'not_set';
   status: 'active' | 'inactive';
   notes?: string;
   assigned_groups?: string[]; // array of line_group_ids
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface BirthdayTemplate {
+  id: string;
+  year: number;
+  template_name: string;
+  image_url: string;
+  is_active: boolean;
+  frame_config?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    shape: 'oval' | 'rect' | 'circle';
+  };
   created_at: string;
   updated_at?: string;
 }

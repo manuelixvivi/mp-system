@@ -1009,6 +1009,16 @@ export async function createMember(member: Omit<Member, 'id' | 'created_at'>): P
       if (error) {
         console.warn('Supabase member insert warning:', error.message);
         // Fall back to base columns if newly added columns aren't in Supabase schema cache
+        const extraMeta = {
+          photo_url: newMember.photo_url,
+          community_role: newMember.community_role,
+          whatsapp_number: newMember.whatsapp_number,
+          baptismal_name: newMember.baptismal_name,
+          class_origin: newMember.class_origin,
+          entry_year: newMember.entry_year,
+          line_id: newMember.line_id,
+        };
+
         const basePayload = {
           id: newMember.id,
           full_name: newMember.full_name,
@@ -1019,7 +1029,7 @@ export async function createMember(member: Omit<Member, 'id' | 'created_at'>): P
           line_display_name: newMember.line_display_name,
           line_verification_status: newMember.line_verification_status,
           status: newMember.status,
-          notes: newMember.notes,
+          notes: newMember.notes || JSON.stringify(extraMeta),
           created_at: newMember.created_at,
         };
         const { data: baseData, error: baseErr } = await supabase

@@ -13,6 +13,7 @@ import {
   Radio,
   History,
   Bot,
+  Palette,
   Users,
   Sliders,
   ShieldCheck,
@@ -75,6 +76,17 @@ export default function Sidebar() {
           href: '/dashboard/birthdays/calendar',
           icon: Calendar,
           roles: ['superadmin', 'logistik'],
+        },
+      ],
+    },
+    {
+      title: 'Pubdok Studio',
+      items: [
+        {
+          label: 'Editor Kartu Ultah',
+          href: '/dashboard/pubdok/editor',
+          icon: Palette,
+          roles: ['superadmin', 'pubdok', 'logistik'],
         },
       ],
     },
