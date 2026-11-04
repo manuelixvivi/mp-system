@@ -131,6 +131,33 @@ export class LineApiClient {
   }
 
   /**
+   * Retrieves group summary information (name, picture) from LINE Messaging API
+   */
+  async getGroupSummary(groupId: string): Promise<{ groupId: string; groupName: string; pictureUrl?: string } | null> {
+    if (!this.channelAccessToken || !groupId) return null;
+    try {
+      const response = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.channelAccessToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          groupId: data.groupId || groupId,
+          groupName: data.groupName || '',
+          pictureUrl: data.pictureUrl,
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[LINE CLIENT] getGroupSummary warning for ${groupId}:`, err.message);
+    }
+    return null;
+  }
+
+  /**
    * Format Birthday Message with Native LINE Mention (textV2 API)
    * PRD Requirement: Max 20 mentions per batch, no teddy bears.
    */

@@ -70,7 +70,7 @@ export default function DevotionalAuditPage() {
     setActionLoading(true);
     setNotification(null);
     try {
-      const res = await fetch(`/api/cron/devotional-scrape?date=${targetDate}`, { method: 'POST' });
+      const res = await fetch(`/api/cron/devotional-scrape?date=${targetDate}&force=true`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setNotification({ type: 'success', message: data.message || 'Scraping berhasil dieksekusi dan disimpan!' });

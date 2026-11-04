@@ -22,6 +22,7 @@ export default function DevotionalManagementPage() {
   const [devotionals, setDevotionals] = useState<Devotional[]>([]);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
+  const [rowScrapingDate, setRowScrapingDate] = useState<string | null>(null);
   const [scrapeResult, setScrapeResult] = useState<any>(null);
 
   const loadDevotionals = async () => {
@@ -44,7 +45,7 @@ export default function DevotionalManagementPage() {
     setScraping(true);
     setScrapeResult(null);
     try {
-      const res = await fetch('/api/cron/devotional-scrape', { method: 'POST' });
+      const res = await fetch('/api/cron/devotional-scrape?force=true', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setScrapeResult({ success: true, message: data.message || 'Scraping berhasil dieksekusi dan disimpan!' });
@@ -56,6 +57,25 @@ export default function DevotionalManagementPage() {
       setScrapeResult({ success: false, message: e.message || 'Gagal menjalankan scraping' });
     } finally {
       setScraping(false);
+    }
+  };
+
+  const handleReScrapeDate = async (dateStr: string) => {
+    setRowScrapingDate(dateStr);
+    setScrapeResult(null);
+    try {
+      const res = await fetch(`/api/cron/devotional-scrape?date=${dateStr}&force=true`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setScrapeResult({ success: true, message: `Scraping ulang tanggal ${dateStr} berhasil!` });
+      } else {
+        setScrapeResult({ success: false, message: data.message || data.error || `Gagal scraping tanggal ${dateStr}` });
+      }
+      await loadDevotionals();
+    } catch (e: any) {
+      setScrapeResult({ success: false, message: e.message || 'Terjadi kesalahan sistem' });
+    } finally {
+      setRowScrapingDate(null);
     }
   };
 
@@ -175,7 +195,19 @@ export default function DevotionalManagementPage() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {(currentRole === 'superadmin' || currentRole === 'liturgi') && (
+                  <button
+                    onClick={() => handleReScrapeDate(dev.devotional_date)}
+                    disabled={rowScrapingDate === dev.devotional_date}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors disabled:opacity-50"
+                    title="Scrape ulang tanggal ini dari The Katolik"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${rowScrapingDate === dev.devotional_date ? 'animate-spin' : ''}`} />
+                    <span>{rowScrapingDate === dev.devotional_date ? 'Proses...' : 'Scrape Ulang'}</span>
+                  </button>
+                )}
+
                 <Link
                   href={`/dashboard/devotionals/audit?date=${dev.devotional_date}`}
                   className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"

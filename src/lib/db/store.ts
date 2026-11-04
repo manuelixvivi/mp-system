@@ -77,7 +77,7 @@ export async function syncFromSupabase(): Promise<void> {
       supabase.from('members').select('*').order('full_name', { ascending: true }),
       supabase.from('line_bots').select('*').limit(1).maybeSingle(),
       supabase.from('devotionals').select('*').order('devotional_date', { ascending: false }),
-      supabase.from('automation_settings').select('*').limit(1).maybeSingle(),
+      supabase.from('automation_settings').select('setting_key, setting_value'),
       supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
     ]);
 
@@ -97,8 +97,17 @@ export async function syncFromSupabase(): Promise<void> {
     if (!devRes.error && Array.isArray(devRes.data)) {
       db.devotionals = devRes.data as Devotional[];
     }
-    if (!setRes.error && setRes.data) {
-      db.settings = { ...db.settings, ...setRes.data };
+    if (!setRes.error && Array.isArray(setRes.data)) {
+      const loaded: any = {};
+      for (const row of setRes.data) {
+        if (!row.setting_key) continue;
+        let val: any = row.setting_value;
+        if (val === 'true') val = true;
+        else if (val === 'false') val = false;
+        else if (/^\d+$/.test(val) && row.setting_key.includes('limit')) val = Number(val);
+        loaded[row.setting_key] = val;
+      }
+      db.settings = { ...db.settings, ...loaded };
     }
     if (!logRes.error && Array.isArray(logRes.data)) {
       db.logs = logRes.data as ActivityLog[];
@@ -240,6 +249,26 @@ export async function getProfileByEmail(email: string): Promise<SafeProfile | un
 export function getProfileByLineUserId(lineUserId: string): SafeProfile | undefined {
   const profile = loadDatabase().profiles.find((p) => p.line_user_id === lineUserId && p.is_active);
   return profile ? sanitizeProfile(profile) : undefined;
+}
+
+export async function getProfileByLineUserIdAsync(lineUserId: string): Promise<SafeProfile | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('line_user_id', lineUserId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!error && data) {
+        return sanitizeProfile(data as Profile);
+      }
+    } catch (err) {
+      console.warn('Supabase getProfileByLineUserIdAsync warning:', err);
+    }
+  }
+  return getProfileByLineUserId(lineUserId);
 }
 
 /**
@@ -890,6 +919,33 @@ export async function createLineGroup(group: Omit<LineGroup, 'id' | 'created_at'
   return newGroup;
 }
 
+/**
+ * Ensures a LINE group is tracked in database (auto-registers upon receiving group messages/events)
+ */
+export async function ensureLineGroupTracked(
+  groupId: string,
+  groupName?: string
+): Promise<LineGroup> {
+  const cleanGroupId = groupId.trim();
+  const existing = await getLineGroupById(cleanGroupId);
+  if (existing) {
+    if (groupName && groupName.trim() && existing.group_name !== groupName.trim()) {
+      const updated = await updateLineGroup(existing.id, { group_name: groupName.trim() });
+      if (updated) return updated;
+    }
+    return existing;
+  }
+
+  // Auto-register new group discovered from LINE bot events
+  return await createLineGroup({
+    group_id: cleanGroupId,
+    group_name: groupName?.trim() || `Grup LINE (${cleanGroupId.slice(-6)})`,
+    assigned_modules: ['devotional', 'birthday'],
+    member_count: 0,
+    is_active: true,
+  });
+}
+
 // Members - Live from Supabase if configured
 export async function getMembers(): Promise<Member[]> {
   if (isSupabaseConfigured && supabase) {
@@ -1321,19 +1377,26 @@ export function saveDevotionalSource(source: DevotionalSource): DevotionalSource
   return source;
 }
 
-// Settings - Live from Supabase if configured
+// Settings - Live from Supabase if configured (key-value table)
 export async function getAutomationSettings(): Promise<AutomationSettings> {
+  const db = inMemoryDb || loadDatabase();
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
         .from('automation_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
+        .select('setting_key, setting_value');
 
-      if (!error && data) {
-        const db = inMemoryDb || loadDatabase();
-        db.settings = { ...db.settings, ...data };
+      if (!error && Array.isArray(data)) {
+        const loaded: any = {};
+        for (const row of data) {
+          if (!row.setting_key) continue;
+          let val: any = row.setting_value;
+          if (val === 'true') val = true;
+          else if (val === 'false') val = false;
+          else if (/^\d+$/.test(val) && row.setting_key.includes('limit')) val = Number(val);
+          loaded[row.setting_key] = val;
+        }
+        db.settings = { ...db.settings, ...loaded };
         saveDatabase(db);
         return db.settings;
       }
@@ -1341,7 +1404,7 @@ export async function getAutomationSettings(): Promise<AutomationSettings> {
       console.warn('Supabase getAutomationSettings warning:', err);
     }
   }
-  return (inMemoryDb || loadDatabase()).settings;
+  return db.settings;
 }
 
 export function getAutomationSettingsSync(): AutomationSettings {
@@ -1355,13 +1418,16 @@ export async function updateAutomationSettings(updates: Partial<AutomationSettin
 
   if (isSupabaseConfigured && supabase) {
     try {
-      const settingId = (db.settings as any).id;
-      const query = supabase.from('automation_settings').update(updates);
-      const { data } = settingId ? await query.eq('id', settingId).select().maybeSingle() : await query.neq('devotional_scraping_time', '').select().maybeSingle();
+      const upsertRows = Object.entries(updates).map(([key, val]) => ({
+        setting_key: key,
+        setting_value: String(val ?? ''),
+        updated_at: new Date().toISOString(),
+      }));
 
-      if (data) {
-        db.settings = { ...db.settings, ...data };
-        saveDatabase(db);
+      for (const row of upsertRows) {
+        await supabase
+          .from('automation_settings')
+          .upsert(row, { onConflict: 'setting_key' });
       }
     } catch (err) {
       console.warn('Supabase updateAutomationSettings error:', err);

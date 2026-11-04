@@ -52,6 +52,52 @@ ${takeOneStep.trim()}
 𝓞𝓷𝓮 𝓼𝓽𝓮𝓹 𝓬𝓵𝓸𝓼𝓮𝓻 𝓽𝓸 𝓗𝓲𝓶.”`;
 }
 
+// Comprehensive liturgical Golden Verse map for Catholic daily Gospel pericopes
+const GOSPEL_GOLDEN_VERSES: Record<string, { ref: string; text: string; reflectionSummary?: string }> = {
+  'Lukas 15:1-10': {
+    ref: 'Lukas 15:7',
+    text: 'Demikian juga akan ada sukacita di sorga karena satu orang berdosa yang bertobat.',
+    reflectionSummary:
+      'Tuhan nggak pernah menyerah mencari kita, bahkan saat kita merasa tersesat atau menjauh. Di mata-Nya, setiap kita itu berharga banget dan selalu ada kesempatan kedua buat memulai lagi bareng Dia.',
+  },
+  'Lukas 16:1-8': {
+    ref: 'Lukas 16:8',
+    text: 'Anak-anak dunia ini lebih cerdik terhadap sesamanya daripada anak-anak terang.',
+    reflectionSummary:
+      'Kalau buat urusan tugas, karier, dan masa depan kita bisa se-effort itu, jangan sampai urusan rohani dan relasi bareng Tuhan kita santai-santai aja. Yuk lebih bijak dan sungguh-sungguh mengelola kepercayaan yang Tuhan kasih.',
+  },
+  'Lukas 16:9-15': {
+    ref: 'Lukas 16:10',
+    text: 'Barangsiapa setia dalam perkara-perkara kecil, ia setia juga dalam perkara-perkara besar.',
+    reflectionSummary:
+      'Terkadang kita nunggu momentum besar baru mau setia. Padahal integritas dan karakter kita dibentuk dari hal-hal kecil tiap hari: disiplin waktu, jujur ngerjain tugas, dan konsisten jaga hati.',
+  },
+  'Lukas 17:7-10': {
+    ref: 'Lukas 17:10',
+    text: 'Apabila kamu telah melakukan segala sesuatu yang ditugaskan kepadamu, hendaklah kamu berkata: Kami adalah hamba-hamba yang tidak berguna.',
+    reflectionSummary:
+      'Melayani dan berbuat baik itu bukan ajang cari panggung atau validasi manusia. Ketika kita melayani dengan tulus tanpa pamrih, di situlah damai dan sukacita sejati bakal ngalir dalam hidup kita.',
+  },
+  'Matius 25:1-13': {
+    ref: 'Matius 25:13',
+    text: 'Karena itu, berjaga-jagalah, sebab kamu tidak tahu akan hari maupun akan saatnya.',
+    reflectionSummary:
+      'Jangan biarkan pelita iman kita padam karena terdistraksi hiruk-pikuk rutinitas dan scrolling sosmed. Tetap jaga hati yang peka dan siap sedia mendengarkan suara Tuhan di setiap momen.',
+  },
+  'Yohanes 2:13-22': {
+    ref: 'Yohanes 2:19',
+    text: 'Rombak Bait Allah ini, dan dalam tiga hari Aku akan mendirikannya kembali.',
+    reflectionSummary:
+      'Tubuh dan hati kita adalah bait Roh Kudus yang hidup. Yuk bersihin hati kita dari rasa dendam, iri hati, dan overthinking yang nggak berfaedah, biar hadirat Tuhan benar-benar nyata memimpin langkah kita.',
+  },
+  'Lukas 14:25-33': {
+    ref: 'Lukas 14:27',
+    text: 'Barangsiapa tidak memikul salibnya dan mengikut Aku, ia tidak dapat menjadi murid-Ku.',
+    reflectionSummary:
+      'Mengikut Yesus bukan berarti hidup bebas hambatan, tapi punya penyertaan Tuhan di setiap proses. Belajar pikul komitmen kita hari ini dengan setia, karena Tuhan yang bakal kuatkan kita.',
+  },
+};
+
 /**
  * Intelligent liturgical extraction from real scraped Catholic text
  * Used when LLM API keys are not yet configured or as high-precision fallback
@@ -64,73 +110,147 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
   mindCheck: string;
   takeOneStep: string;
 } {
-  // 1. Extract Saint Commemoration (Peringatan Santo/Santa)
+  // 1. Extract Saint Commemoration or Feast (Peringatan / Pesta / Hari Raya)
   let saintCommemoration = '';
   const saintMatch = rawContent.match(
-    /Peringatan(?:\s+(?:Wajib|Fakultatif))?\s*[:\-–]?\s*([^\n\r–]+?)(?=(Pekan|Tahun|Bacaan|Mazmur|\n|$))/i
+    /(?:Peringatan(?:\s+(?:Wajib|Fakultatif))?|Pesta|Hari Raya)\s*[:\-–]?\s*([^\n\r–]+?)(?=(?:\n|Pekan|Tahun|Bacaan|Mazmur|Warna|$))/i
   );
   if (saintMatch && saintMatch[1].trim().length > 3) {
     saintCommemoration = saintMatch[1].trim();
   } else {
-    // Check if title or content explicitly mentions Santo/Santa
-    const titleSaintMatch = (rawTitle + ' ' + rawContent).match(
-      /(?:Peringatan\s+)?(Santo|Santa|Beato|Beata|Para Martir|Hari Arwah)\s+[^–\n,]+/i
+    // Only match title if it starts with Peringatan / Pesta
+    const titleSaintMatch = rawTitle.match(
+      /(?:Peringatan|Pesta|Hari Raya)\s*(?:Santo|Santa|Beato|Beata|Para Martir|Hari Arwah|Pemberkatan Basilika)\s+[^\n\r–,]+/i
     );
     if (titleSaintMatch) {
-      saintCommemoration = titleSaintMatch[0].replace(/^Peringatan\s+/i, '').trim();
+      saintCommemoration = titleSaintMatch[0].replace(/^(?:Peringatan|Pesta|Hari Raya)\s+/i, '').trim();
     }
   }
 
-  // 2. Extract Gospel reference (Bacaan Injil) or first scripture reference
-  let verseRef = '';
+  // 2. Extract Gospel reference (Bacaan Injil)
+  let gospelBook = '';
+  let gospelChapterVerse = '';
   const injilMatch = rawContent.match(
-    /Bacaan Injil\s*:\s*([A-Za-z0-9\s:,–-]+?)(?=(Baca juga|Tema|Pengantar|Mazmur|Bait|\n|$))/i
+    /Bacaan Injil\s*[:\-–]?\s*([1-3]?\s*[A-Za-z]+)\s*(\d+:\d+(?:[–-]\d+)?)/i
   );
-  if (injilMatch && injilMatch[1].trim().length > 3) {
-    verseRef = injilMatch[1].trim();
-  } else {
-    const refMatch = rawContent.match(/([1-3]?\s?[A-Za-z]+)\s*(\d+:\d+(-\d+)?)/i);
-    verseRef = refMatch ? refMatch[0].trim() : 'Lukas 14:25-33';
-  }
 
-  // 3. Extract Gospel Quote or Scripture verse
-  let verseText = '';
-  const quoteMatch = rawContent.match(/"([^"]{25,250})"/);
-  if (quoteMatch && quoteMatch[1]) {
-    verseText = quoteMatch[1].trim();
+  if (injilMatch) {
+    gospelBook = injilMatch[1].trim();
+    gospelChapterVerse = injilMatch[2].replace('–', '-').trim();
   } else {
-    // Look for sentence with scripture keywords
-    const sentenceMatch = rawContent.match(
-      /(?:Yesus bersabda|berkatalah Yesus|Firman Tuhan)[^:.]*:\s*([^.?!]{20,180}[.?!])/i
-    );
-    if (sentenceMatch) {
-      verseText = sentenceMatch[1].trim();
+    // Look for standard Catholic Gospel books in text
+    const genericGospel = rawContent.match(/(?:Injil\s+)?(Matius|Markus|Lukas|Yohanes)\s*(\d+:\d+(?:[–-]\d+)?)/i);
+    if (genericGospel) {
+      gospelBook = genericGospel[1].trim();
+      gospelChapterVerse = genericGospel[2].replace('–', '-').trim();
     } else {
-      verseText = 'Barangsiapa tidak memikul salibnya dan mengikut Aku, ia tidak dapat menjadi murid-Ku.';
+      gospelBook = 'Lukas';
+      gospelChapterVerse = '14:27';
     }
   }
 
-  // 4. Extract Reflection from Pengantar Renungan or Commentary
-  let reflection = '';
-  const pengantarMatch = rawContent.match(
-    /Pengantar Renungan\s*([\s\S]*?)(?=(Bacaan I|Mazmur|Bait|Lukas|Filipi|Refleksi|\n\n))/i
+  const rawGospelRef = `${gospelBook} ${gospelChapterVerse}`;
+  const normalizedGospelKey = rawGospelRef.replace(/\s+/g, ' ');
+  const knownEntry = GOSPEL_GOLDEN_VERSES[normalizedGospelKey];
+
+  // 3. Extract Verse Text
+  let verseText = '';
+  let verseRef = knownEntry ? knownEntry.ref : rawGospelRef;
+
+  // Check for explicit "Ayat inspirasi:"
+  const quoteInspirasi = rawContent.match(
+    /Ayat inspirasi\s*[:\-–]?\s*[\n\s]*[“"']?([^”"'\n\r]{15,250})/i
   );
-  if (pengantarMatch && pengantarMatch[1].trim().length > 80) {
-    const rawParagraph = pengantarMatch[1].trim();
-    const periodIdx = rawParagraph.indexOf('.', 120);
-    reflection = periodIdx > 0 ? rawParagraph.slice(0, periodIdx + 1).trim() : rawParagraph;
+  if (quoteInspirasi && quoteInspirasi[1].trim().length > 15) {
+    verseText = quoteInspirasi[1].trim();
   } else {
-    const paragraphs = rawContent.split(/\n+/).map((p) => p.trim()).filter((p) => p.length > 80);
-    reflection =
-      paragraphs[0] ||
-      'Di tengah padatnya tugas kuliah dan rutinitas yang bikin overthinking, firman hari ini ngingetin kita: kita nggak pernah jalan sendirian. Belajar mengandalkan Tuhan bukan berarti masalah langsung auto kelar, tapi bikin hati kita jauh lebih tenang dan punya arah yang jelas di setiap langkah.';
+    // Check for quoted verse with Unicode curly or standard quotes
+    const quoteMatches = rawContent.match(/[“"']([^“”"'\r\n]{18,220})[”"']/g);
+    if (quoteMatches && quoteMatches.length > 0) {
+      // Pick first meaningful quote
+      const cleanQ = quoteMatches[0].replace(/^[“"']|[”"']$/g, '').trim();
+      if (cleanQ.length > 18 && !cleanQ.toLowerCase().startsWith('baca juga')) {
+        verseText = cleanQ;
+      }
+    }
   }
 
-  // 5. Extract or craft Mind Check question
+  // If quote still empty, use known golden verse or spoken sentence
+  if (!verseText) {
+    if (knownEntry) {
+      verseText = knownEntry.text;
+    } else {
+      const sentenceMatch = rawContent.match(
+        /(?:Yesus bersabda|berkatalah Yesus|sabda Tuhan)[^:.]*:\s*([^.?!]{20,180}[.?!])/i
+      );
+      if (sentenceMatch) {
+        verseText = sentenceMatch[1].trim();
+      } else {
+        // Fallback to first verse of pericope
+        verseText = 'Barangsiapa setia dalam perkara-perkara kecil, ia setia juga dalam perkara-perkara besar.';
+        verseRef = 'Lukas 16:10';
+      }
+    }
+  }
+
+  // If verseRef is still a range like "Lukas 15:1-10", resolve to single golden verse
+  if (verseRef.includes('-')) {
+    if (knownEntry) {
+      verseRef = knownEntry.ref;
+    } else {
+      const singleM = verseRef.match(/^([1-3]?\s*[A-Za-z]+)\s*(\d+):(\d+)-\d+$/);
+      if (singleM) {
+        verseRef = `${singleM[1]} ${singleM[2]}:${singleM[3]}`;
+      }
+    }
+  }
+
+  // 4. Extract Theme & Reflection
+  let theme = '';
+  const themeMatch = rawContent.match(/(?:Tema Renungan|Tema)\s*[:\-–]?\s*([^\n\r]+)/i);
+  if (themeMatch && themeMatch[1].trim().length > 4) {
+    theme = themeMatch[1].trim();
+  }
+
+  let reflection = '';
+  if (knownEntry?.reflectionSummary) {
+    reflection = knownEntry.reflectionSummary;
+  } else {
+    // Extract concise reflection from Pengantar or first commentary paragraph
+    const pengantarMatch = rawContent.match(
+      /(?:Pengantar Renungan[^\n]*\n)([\s\S]*?)(?=(?:Bacaan I|Mazmur|Bait|Lukas|Matius|Yohanes|Filipi|Refleksi|\n\n))/i
+    );
+    if (pengantarMatch && pengantarMatch[1].trim().length > 40) {
+      const cleanP = pengantarMatch[1].replace(/\s+/g, ' ').trim();
+      const periodIdx = cleanP.indexOf('.', 120);
+      reflection = periodIdx > 0 && periodIdx < 280 ? cleanP.slice(0, periodIdx + 1).trim() : cleanP.slice(0, 250).trim() + '.';
+    } else {
+      const paragraphs = rawContent
+        .split('\n')
+        .map((p) => p.trim())
+        .filter((p) => p.length > 50 && !p.startsWith('Bacaan') && !p.startsWith('Mazmur') && !p.startsWith('Pekan'));
+      if (paragraphs.length > 0) {
+        const p = paragraphs[0];
+        const dotIdx = p.indexOf('.', 100);
+        reflection = dotIdx > 0 && dotIdx < 280 ? p.slice(0, dotIdx + 1).trim() : p.slice(0, 250).trim() + '.';
+      } else {
+        reflection = theme
+          ? `Tema hari ini mengajak kita merenungkan "${theme}". Di tengah hiruk-pikuk aktivitas dan kuliah, mari luangkan waktu sejenak mengandalkan pimpinan Tuhan di setiap langkah.`
+          : 'Di tengah padatnya tugas dan rutinitas, firman hari ini mengingatkan kita untuk selalu mengandalkan Tuhan agar hati tetap damai dan terarah.';
+      }
+    }
+  }
+
+  // Clean reflection length: strictly max 300 characters
+  if (reflection.length > 300) {
+    const endDot = reflection.lastIndexOf('.', 295);
+    reflection = endDot > 100 ? reflection.slice(0, endDot + 1).trim() : reflection.slice(0, 290).trim() + '...';
+  }
+
+  // 5. Mind Check
   let mindCheck = '';
-  const questionMatch = rawContent.match(/([A-Z][^.?!]*\?)/);
-  if (questionMatch && questionMatch[1].length > 30 && questionMatch[1].length < 220) {
-    mindCheck = questionMatch[1].trim();
+  if (theme) {
+    mindCheck = `Terkait "${theme}", apa satu hal konkret dalam keseharian atau kuliahmu yang masih sering kamu andalkan dengan kekuatan sendiri daripada berserah ke Tuhan?`;
   } else {
     mindCheck =
       'Pas lagi pusing sama urusan tugas, circle pertemanan, atau overthinking masa depan, siapa yang biasanya jadi pelarian pertama kamu: sosmed, validasi orang lain, atau bersujud ke Tuhan?';
@@ -138,7 +258,7 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
 
   // 6. Take One Step
   const takeOneStep =
-    'Ambil jeda 2 menit sebelum mulai nugas atau aktivitas hari ini: tarik napas, doakan satu hal yang paling bikin cemas, dan percaya Tuhan yang pegang kendali.';
+    'Ambil jeda 2 menit sebelum mulai nugas atau beraktivitas hari ini: tarik napas, doakan satu hal yang paling bikin cemas, dan percaya Tuhan yang pegang kendali.';
 
   return {
     saintCommemoration,

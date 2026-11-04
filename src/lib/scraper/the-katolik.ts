@@ -250,9 +250,29 @@ export async function scrapeTheKatolikDevotional(
       contentContainer
         .find('script, style, iframe, .ads, .related-posts, #post-pager, .comments-content, #comment-editor, .share-buttons')
         .remove();
-      rawContent = contentContainer.text().replace(/\s+/g, ' ').trim();
+
+      // Convert line breaks and block elements to clean newlines
+      contentContainer.find('br').replaceWith('\n');
+      contentContainer.find('p, div, h1, h2, h3, h4, li, blockquote').each((_, el) => {
+        $(el).prepend('\n').append('\n');
+      });
+
+      rawContent = contentContainer
+        .text()
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n\s*\n+/g, '\n\n')
+        .trim();
     } else {
-      rawContent = $('body').text().replace(/\s+/g, ' ').substring(0, 5000);
+      $('br').replaceWith('\n');
+      $('p, div, h1, h2, h3, h4, li').prepend('\n').append('\n');
+      rawContent = $('body')
+        .text()
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n\s*\n+/g, '\n\n')
+        .trim()
+        .substring(0, 10000);
     }
 
     if (!rawContent || rawContent.length < 50) {

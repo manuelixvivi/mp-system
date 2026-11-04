@@ -1,5 +1,6 @@
 import {
   getProfileByLineUserId,
+  getProfileByLineUserIdAsync,
   activateProfileByToken,
   addActivityLog,
   getDevotionalByDate,
@@ -7,9 +8,10 @@ import {
   getLineGroups,
   updateDevotionalAudit,
   addDelivery,
+  ensureLineGroupTracked,
 } from '../db/store';
 import { LineApiClient } from './client';
-import { UserRole } from '@/types';
+import { UserRole, LineGroup } from '@/types';
 import { getWibParts, getWibIsoDate } from '../time';
 
 // Pending confirmation memory store for personal chat sessions
@@ -22,24 +24,89 @@ interface PendingAction {
 
 const pendingActions = new Map<string, PendingAction>();
 
+function formatGroupListMessage(groups: LineGroup[]): string {
+  if (!groups || groups.length === 0) {
+    return `╔═══════════════════════╗\n  📋 DAFTAR GROUP ID BOT MP\n╚═══════════════════════╝\n\n⚠️ Belum ada grup LINE yang terdata dalam sistem.\n\n💡 Pastikan bot telah diundang ke dalam grup target. Sistem akan otomatis merekam Group ID setiap kali ada event atau pesan masuk dari grup tersebut.`;
+  }
+
+  const items = groups
+    .map((g, index) => {
+      const modules =
+        g.assigned_modules && g.assigned_modules.length > 0
+          ? g.assigned_modules.join(', ')
+          : 'Belum diatur';
+      const status = g.is_active ? 'Aktif ✅' : 'Nonaktif ⏸️';
+      return `${index + 1}. 👥 Nama: ${g.group_name || 'Tanpa Nama'}\n   🆔 Group ID: ${g.group_id}\n   📌 Status: ${status}\n   🏷️ Modul: ${modules}`;
+    })
+    .join('\n\n');
+
+  return `╔═══════════════════════╗\n  📋 DAFTAR GROUP ID BOT MP\n╚═══════════════════════╝\n\nTotal Grup Terdata: ${groups.length} grup\n\n${items}\n\n💡 Salin Group ID di atas untuk dimasukkan ke konfigurasi sistem.`;
+}
+
 export async function handleLineWebhookEvent(event: any): Promise<any> {
   const lineClient = new LineApiClient();
 
   // RULE 1: STRICT GROUP POLICY (PRD 3.4)
-  // Bot is strictly broadcast-only in LINE groups.
+  // Bot is strictly broadcast-only in LINE groups, with special support for Superadmin commands (/get_all_groupid)
   if (event.source?.type === 'group' || event.source?.type === 'room') {
+    const groupId = event.source.groupId || event.source.roomId;
+
+    // Automatically track / update the group in database
+    if (groupId) {
+      let groupTitle: string | undefined;
+      try {
+        const summary = await lineClient.getGroupSummary(groupId);
+        if (summary?.groupName) groupTitle = summary.groupName;
+      } catch {}
+      await ensureLineGroupTracked(groupId, groupTitle);
+    }
+
     // If bot joined group, log it silently
     if (event.type === 'join') {
-      console.log(`[LINE BOT] Joined group: ${event.source.groupId}`);
+      console.log(`[LINE BOT] Joined group: ${groupId}`);
       addActivityLog({
         actor_type: 'line_bot',
         action: 'bot_joined_group',
         entity_type: 'line_group',
-        entity_id: event.source.groupId,
-        details: { groupId: event.source.groupId },
+        entity_id: groupId,
+        details: { groupId },
       });
+      return { status: 'bot_joined_group', groupId };
     }
-    // NEVER respond to messages in groups!
+
+    // Check if a Superadmin sent /get_all_groupid inside a group
+    const groupText = (event.message?.text || '').trim();
+    if (
+      event.type === 'message' &&
+      event.message?.type === 'text' &&
+      groupText.toLowerCase() === '/get_all_groupid'
+    ) {
+      const senderUserId = event.source.userId;
+      if (senderUserId) {
+        const senderProfile = await getProfileByLineUserIdAsync(senderUserId);
+        if (senderProfile && senderProfile.role === 'superadmin') {
+          const allGroups = await getLineGroups();
+          const replyText = formatGroupListMessage(allGroups);
+          if (event.replyToken) {
+            await lineClient.replyMessage(event.replyToken, [{ type: 'text', text: replyText }]);
+          }
+
+          addActivityLog({
+            user_id: senderProfile.id,
+            user_name: senderProfile.name,
+            actor_type: 'user',
+            action: 'get_all_groupid_in_group',
+            entity_type: 'line_bot',
+            entity_id: groupId,
+            details: { totalGroups: allGroups.length },
+          });
+
+          return { status: 'replied_get_all_groupid_in_group', total: allGroups.length };
+        }
+      }
+    }
+
+    // NEVER respond to general chatting in groups!
     return { status: 'ignored_group_message' };
   }
 
@@ -84,7 +151,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
   }
 
   // 2. Verify Authentication & Role
-  const userProfile = getProfileByLineUserId(lineUserId);
+  const userProfile = (await getProfileByLineUserIdAsync(lineUserId)) || getProfileByLineUserId(lineUserId);
 
   if (!userProfile) {
     // Log unauthorized access attempt
@@ -153,6 +220,28 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
   // --- /STATUS ---
   if (command === '/status' || command.startsWith('/status ')) {
     return await sendReply(await getStatusMessage(userProfile.role, todayIso));
+  }
+
+  // --- /GET_ALL_GROUPID (SUPERADMIN EXCLUSIVE) ---
+  if (command === '/get_all_groupid') {
+    if (userProfile.role !== 'superadmin') {
+      return await sendReply('⛔ Akses Ditolak: Perintah /get_all_groupid hanya dapat digunakan oleh Superadmin.');
+    }
+
+    const allGroups = await getLineGroups();
+    const reply = formatGroupListMessage(allGroups);
+
+    addActivityLog({
+      user_id: userProfile.id,
+      user_name: userProfile.name,
+      actor_type: 'user',
+      action: 'get_all_groupid_personal',
+      entity_type: 'line_bot',
+      entity_id: 'get_all_groupid',
+      details: { totalGroups: allGroups.length },
+    });
+
+    return await sendReply(reply);
   }
 
   // --- DEVOTIONAL AUDIT VIA CHAT (/approve, /reject) ---
@@ -340,6 +429,10 @@ function getHelpMessage(role: UserRole, userName: string): string {
 
   let commands = `📋 BANTUAN PERINTAH MP CONTROL BOT\n\nHalo, ${userName} (${roleName})!\nBerikut perintah yang dapat Anda gunakan:\n\n• /menu — Tampilkan ringkasan menu wewenang\n• /status — Cek status otomatisasi & jadwal\n• /help — Tampilkan pesan panduan ini\n`;
 
+  if (role === 'superadmin') {
+    commands += `\n[Alat Superadmin]\n• /get_all_groupid — Tampilkan semua Group ID yang ada bot ini di dalamnya\n`;
+  }
+
   if (role === 'superadmin' || role === 'liturgi') {
     commands += `\n[Modul Renungan]\n• /approve — Setujui renungan hari ini\n• /reject — Tolak renungan hari ini\n• /broadcast devotional — Broadcast manual renungan\n`;
   }
@@ -357,12 +450,16 @@ function getMenuMessage(role: UserRole, userName: string): string {
 
   let msg = `╔═══════════════════════╗\n  MP CONTROL SYSTEM BOT\n╚═══════════════════════╝\n\n👤 Pengguna: ${userName}\nRole: ${roleBadge}\n\nPilih aksi dengan mengetik perintah:\n\n1️⃣ /status — Pantau status sistem hari ini\n`;
 
+  if (role === 'superadmin') {
+    msg += `2️⃣ /get_all_groupid — Dapatkan semua Group ID bot\n`;
+  }
+
   if (role === 'superadmin' || role === 'liturgi') {
-    msg += `2️⃣ /broadcast devotional — Kirim renungan harian sekarang\n3️⃣ /approve — Approve renungan hari ini\n`;
+    msg += `3️⃣ /broadcast devotional — Kirim renungan harian sekarang\n4️⃣ /approve — Approve renungan hari ini\n`;
   }
 
   if (role === 'superadmin' || role === 'logistik') {
-    msg += `4️⃣ /broadcast birthday — Kirim ucapan ultah hari ini\n`;
+    msg += `5️⃣ /broadcast birthday — Kirim ucapan ultah hari ini\n`;
   }
 
   msg += `\nℹ️ Akses dashboard web lengkap di: https://mp-control.vercel.app`;
