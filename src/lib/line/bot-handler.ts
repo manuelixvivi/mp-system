@@ -74,8 +74,27 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
       return { status: 'bot_joined_group', groupId };
     }
 
-    // Check if a Superadmin sent /get_all_groupid inside a group
     const groupText = (event.message?.text || '').trim();
+
+    // Check if user sent /myid inside a group
+    if (
+      event.type === 'message' &&
+      event.message?.type === 'text' &&
+      (groupText.toLowerCase() === '/myid' || groupText.toLowerCase() === '/id')
+    ) {
+      const senderUserId = event.source.userId;
+      if (senderUserId && event.replyToken) {
+        await lineClient.replyMessage(event.replyToken, [
+          {
+            type: 'text',
+            text: `🆔 LINE USER ID ANDA:\n\n${senderUserId}\n\n💡 Salin ID di atas dan masukkan ke data anggota (Web Dashboard / Excel) agar bot dapat melakukan mention/tag otomatis saat ulang tahun.`,
+          },
+        ]);
+        return { status: 'replied_myid_in_group', senderUserId };
+      }
+    }
+
+    // Check if a Superadmin sent /get_all_groupid inside a group
     if (
       event.type === 'message' &&
       event.message?.type === 'text' &&
@@ -148,6 +167,13 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 
     if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
     return { status: 'activation_success', text: reply, profile: prof };
+  }
+
+  // 1b. Check for /myid or /id command (accessible by anyone)
+  if (rawText.toLowerCase() === '/myid' || rawText.toLowerCase() === '/id') {
+    const reply = `🆔 LINE USER ID ANDA:\n\n${lineUserId}\n\n💡 Salin ID di atas dan masukkan ke data anggota (Web Dashboard / Excel) agar bot dapat melakukan mention/tag otomatis saat ulang tahun.`;
+    if (replyToken) await lineClient.replyMessage(replyToken, [{ type: 'text', text: reply }]);
+    return { status: 'replied_myid', lineUserId };
   }
 
   // 2. Verify Authentication & Role
@@ -427,7 +453,7 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 function getHelpMessage(role: UserRole, userName: string): string {
   const roleName = role === 'superadmin' ? 'Superadmin' : role === 'liturgi' ? 'Tim Liturgi' : 'Tim Logistik';
 
-  let commands = `📋 BANTUAN PERINTAH MP CONTROL BOT\n\nHalo, ${userName} (${roleName})!\nBerikut perintah yang dapat Anda gunakan:\n\n• /menu — Tampilkan ringkasan menu wewenang\n• /status — Cek status otomatisasi & jadwal\n• /help — Tampilkan pesan panduan ini\n`;
+  let commands = `📋 BANTUAN PERINTAH MP CONTROL BOT\n\nHalo, ${userName} (${roleName})!\nBerikut perintah yang dapat Anda gunakan:\n\n• /menu — Tampilkan ringkasan menu wewenang\n• /status — Cek status otomatisasi & jadwal\n• /myid — Cek LINE User ID akun Anda untuk tag ultah\n• /help — Tampilkan pesan panduan ini\n`;
 
   if (role === 'superadmin') {
     commands += `\n[Alat Superadmin]\n• /get_all_groupid — Tampilkan semua Group ID yang ada bot ini di dalamnya\n`;
