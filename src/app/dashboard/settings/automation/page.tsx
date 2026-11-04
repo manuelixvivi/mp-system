@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRole } from '@/context/RoleContext';
+import { LineGroup, Member } from '@/types';
 import {
   Sliders,
   Clock,
@@ -11,6 +13,10 @@ import {
   Save,
   HelpCircle,
   ShieldAlert,
+  Users,
+  Gift,
+  BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function AutomationSettingsPage() {
@@ -28,6 +34,9 @@ export default function AutomationSettingsPage() {
     gemini_api_key: '',
   });
 
+  const [groups, setGroups] = useState<LineGroup[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [triggeringJob, setTriggeringJob] = useState<string | null>(null);
@@ -38,6 +47,20 @@ export default function AutomationSettingsPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.settings) setSettings(data.settings);
+      })
+      .catch((e) => console.error(e));
+
+    fetch('/api/groups')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.groups) setGroups(data.groups);
+      })
+      .catch((e) => console.error(e));
+
+    fetch('/api/members')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.members) setMembers(data.members);
       })
       .catch((e) => console.error(e));
   }, []);
@@ -186,6 +209,35 @@ export default function AutomationSettingsPage() {
                     />
                   </div>
                 </div>
+
+                {/* Target Groups Info */}
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-700 flex items-center space-x-1">
+                      <BookOpen className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Grup Target Siaran Renungan:</span>
+                    </span>
+                    <Link
+                      href="/dashboard/groups"
+                      className="text-[11px] text-blue-600 hover:underline flex items-center space-x-0.5 font-medium"
+                    >
+                      <span>Kelola Grup</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
+                  <div className="mt-1 text-[11px]">
+                    {groups.filter((g) => g.is_active && g.assigned_modules.includes('devotional')).length > 0 ? (
+                      <span className="text-emerald-700 font-semibold">
+                        {groups
+                          .filter((g) => g.is_active && g.assigned_modules.includes('devotional'))
+                          .map((g) => g.group_name)
+                          .join(', ')}
+                      </span>
+                    ) : (
+                      <span className="text-red-600 font-medium">Belum ada grup aktif yang ditugaskan modul Renungan.</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -238,6 +290,86 @@ export default function AutomationSettingsPage() {
                       }
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                     />
+                  </div>
+                </div>
+
+                {/* Connected Birthday Database & Target Groups Status */}
+                <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200/80 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-900 flex items-center space-x-1.5">
+                      <Gift className="w-4 h-4 text-blue-600" />
+                      <span>Koneksi Database Ulang Tahun & Grup LINE</span>
+                    </span>
+                    <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Database Terhubung</span>
+                    </span>
+                  </div>
+
+                  {/* Target Groups */}
+                  <div className="text-[11px] text-slate-700 flex items-start justify-between">
+                    <div>
+                      <span className="text-slate-500">Grup LINE Penerima Ucapan: </span>
+                      <strong className="text-slate-900">
+                        {groups.filter((g) => g.is_active && g.assigned_modules.includes('birthday')).length > 0
+                          ? groups
+                              .filter((g) => g.is_active && g.assigned_modules.includes('birthday'))
+                              .map((g) => g.group_name)
+                              .join(', ')
+                          : 'Belum ada grup aktif (Buka Manajemen Grup untuk mengaktifkan)'}
+                      </strong>
+                    </div>
+                    <Link
+                      href="/dashboard/groups"
+                      className="text-blue-600 hover:underline font-semibold flex items-center space-x-0.5 flex-shrink-0 ml-2"
+                    >
+                      <span>Atur Grup</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
+
+                  {/* Today's Birthday Member Status */}
+                  <div className="text-[11px] text-slate-700 flex items-start justify-between pt-2 border-t border-blue-100">
+                    <div>
+                      <span className="text-slate-500">Anggota Ulang Tahun Hari Ini: </span>
+                      {members.filter(
+                        (m) =>
+                          m.status === 'active' &&
+                          m.birth_date === new Date().getDate() &&
+                          m.birth_month === new Date().getMonth() + 1
+                      ).length > 0 ? (
+                        <strong className="text-emerald-700">
+                          {
+                            members.filter(
+                              (m) =>
+                                m.status === 'active' &&
+                                m.birth_date === new Date().getDate() &&
+                                m.birth_month === new Date().getMonth() + 1
+                            ).length
+                          }{' '}
+                          Orang (
+                          {members
+                            .filter(
+                              (m) =>
+                                m.status === 'active' &&
+                                m.birth_date === new Date().getDate() &&
+                                m.birth_month === new Date().getMonth() + 1
+                            )
+                            .map((m) => m.full_name)
+                            .join(', ')}
+                          )
+                        </strong>
+                      ) : (
+                        <span className="text-slate-500">Tidak ada anggota berulang tahun hari ini.</span>
+                      )}
+                    </div>
+                    <Link
+                      href="/dashboard/birthdays"
+                      className="text-blue-600 hover:underline font-semibold flex items-center space-x-0.5 flex-shrink-0 ml-2"
+                    >
+                      <span>Lihat Data</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
                   </div>
                 </div>
               </div>

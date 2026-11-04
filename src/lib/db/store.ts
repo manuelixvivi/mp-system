@@ -17,6 +17,7 @@ import {
   NotificationItem,
   BirthdayBroadcast,
   DevotionalAuditStatus,
+  MemberCommunityRole,
 } from '@/types';
 const DEFAULT_LINE_BOT: LineBot = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -89,7 +90,7 @@ export async function syncFromSupabase(): Promise<void> {
       db.line_groups = grpRes.data as LineGroup[];
     }
     if (!memRes.error && Array.isArray(memRes.data)) {
-      db.members = memRes.data as Member[];
+      db.members = (memRes.data as any[]).map(parseMemberRecord);
     }
     if (!botRes.error && botRes.data) {
       db.line_bot = botRes.data as LineBot;
@@ -809,37 +810,47 @@ export async function getLineGroups(): Promise<LineGroup[]> {
   return (inMemoryDb || loadDatabase()).line_groups;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isUuid(val: string): boolean {
+  return typeof val === 'string' && UUID_REGEX.test(val.trim());
+}
+
 export async function getLineGroupById(id: string): Promise<LineGroup | undefined> {
+  const cleanId = id.trim();
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
-        .from('line_groups')
-        .select('*')
-        .or(`id.eq.${id},group_id.eq.${id}`)
-        .maybeSingle();
+      let query = supabase.from('line_groups').select('*');
+      if (isUuid(cleanId)) {
+        query = query.or(`id.eq.${cleanId},group_id.eq.${cleanId}`);
+      } else {
+        query = query.eq('group_id', cleanId);
+      }
+      const { data, error } = await query.maybeSingle();
 
       if (!error && data) {
         return data as LineGroup;
       }
     } catch (err) {}
   }
-  return (inMemoryDb || loadDatabase()).line_groups.find((g) => g.id === id || g.group_id === id);
+  return (inMemoryDb || loadDatabase()).line_groups.find((g) => g.id === cleanId || g.group_id === cleanId);
 }
 
 export async function updateLineGroup(id: string, updates: Partial<LineGroup>): Promise<LineGroup | null> {
+  const cleanId = id.trim();
   const now = new Date().toISOString();
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
-        .from('line_groups')
-        .update({ ...updates, updated_at: now })
-        .or(`id.eq.${id},group_id.eq.${id}`)
-        .select()
-        .maybeSingle();
+      let query = supabase.from('line_groups').update({ ...updates, updated_at: now });
+      if (isUuid(cleanId)) {
+        query = query.or(`id.eq.${cleanId},group_id.eq.${cleanId}`);
+      } else {
+        query = query.eq('group_id', cleanId);
+      }
+      const { data, error } = await query.select().maybeSingle();
 
       if (!error && data) {
         const db = inMemoryDb || loadDatabase();
-        const idx = db.line_groups.findIndex((g) => g.id === id || g.group_id === id);
+        const idx = db.line_groups.findIndex((g) => g.id === cleanId || g.group_id === cleanId);
         if (idx !== -1) db.line_groups[idx] = data as LineGroup;
         else db.line_groups.unshift(data as LineGroup);
         saveDatabase(db);
@@ -851,7 +862,7 @@ export async function updateLineGroup(id: string, updates: Partial<LineGroup>): 
   }
 
   const db = loadDatabase();
-  const idx = db.line_groups.findIndex((g) => g.id === id || g.group_id === id);
+  const idx = db.line_groups.findIndex((g) => g.id === cleanId || g.group_id === cleanId);
   if (idx === -1) return null;
   db.line_groups[idx] = { ...db.line_groups[idx], ...updates, updated_at: now };
   saveDatabase(db);
@@ -859,12 +870,16 @@ export async function updateLineGroup(id: string, updates: Partial<LineGroup>): 
 }
 
 export async function deleteLineGroup(id: string): Promise<boolean> {
+  const cleanId = id.trim();
   if (isSupabaseConfigured && supabase) {
     try {
-      const { error } = await supabase
-        .from('line_groups')
-        .delete()
-        .or(`id.eq.${id},group_id.eq.${id}`);
+      let query = supabase.from('line_groups').delete();
+      if (isUuid(cleanId)) {
+        query = query.or(`id.eq.${cleanId},group_id.eq.${cleanId}`);
+      } else {
+        query = query.eq('group_id', cleanId);
+      }
+      const { error } = await query;
 
       if (error) {
         console.error('Supabase deleteLineGroup error:', error.message);
@@ -877,7 +892,7 @@ export async function deleteLineGroup(id: string): Promise<boolean> {
   }
 
   const db = loadDatabase();
-  db.line_groups = db.line_groups.filter((g) => g.id !== id && g.group_id !== id);
+  db.line_groups = db.line_groups.filter((g) => g.id !== cleanId && g.group_id !== cleanId);
   saveDatabase(db);
   return true;
 }
@@ -946,6 +961,106 @@ export async function ensureLineGroupTracked(
   });
 }
 
+// Member Metadata serialization & deserialization helpers
+export function parseMemberRecord(raw: any): Member {
+  if (!raw) return raw;
+  let extra: any = {};
+  if (raw.notes && typeof raw.notes === 'string') {
+    const trimmed = raw.notes.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        extra = JSON.parse(trimmed);
+      } catch (e) {
+        extra = {};
+      }
+    } else {
+      const normalized = trimmed.toLowerCase().replace(/[\s&]+/g, '_');
+      if (['anggota_aktif', 'ketua', 'wakil_ketua', 'bendahara', 'sekretaris', 'liturgi_humas', 'logistik', 'pubdok', 'acara'].includes(normalized)) {
+        extra.community_role = normalized;
+      }
+    }
+  }
+
+  const full_name = raw.full_name || '';
+  const baptismal_name = raw.baptismal_name || extra.baptismal_name || undefined;
+  const line_id = raw.line_id || extra.line_id || undefined;
+  const instagram_account = raw.instagram_account || extra.instagram_account || undefined;
+  const class_origin = raw.class_origin || extra.class_origin || undefined;
+  const entry_year = raw.entry_year ? Number(raw.entry_year) : (extra.entry_year ? Number(extra.entry_year) : undefined);
+  const whatsapp_number = raw.whatsapp_number || extra.whatsapp_number || undefined;
+  const photo_url = raw.photo_url || extra.photo_url || undefined;
+  const birthday_card_url = raw.birthday_card_url || extra.birthday_card_url || undefined;
+  const community_role: MemberCommunityRole =
+    raw.community_role || extra.community_role || (raw.notes === 'Anggota Aktif' ? 'anggota_aktif' : 'anggota_aktif');
+
+  let assigned_groups: string[] = [];
+  if (Array.isArray(raw.assigned_groups)) {
+    assigned_groups = raw.assigned_groups;
+  } else if (Array.isArray(extra.assigned_groups)) {
+    assigned_groups = extra.assigned_groups;
+  }
+
+  const displayNotes = extra.user_notes !== undefined
+    ? extra.user_notes
+    : (raw.notes && !raw.notes.startsWith('{') ? raw.notes : undefined);
+
+  return {
+    id: raw.id,
+    full_name,
+    baptismal_name,
+    birth_date: Number(raw.birth_date),
+    birth_month: Number(raw.birth_month),
+    birth_year: raw.birth_year ? Number(raw.birth_year) : (extra.birth_year ? Number(extra.birth_year) : undefined),
+    class_origin,
+    entry_year,
+    line_user_id: raw.line_user_id || undefined,
+    line_id,
+    line_display_name: raw.line_display_name || full_name,
+    line_verification_status: raw.line_verification_status || (raw.line_user_id ? 'verified' : 'not_set'),
+    instagram_account,
+    assigned_groups,
+    status: raw.status || 'active',
+    community_role,
+    whatsapp_number,
+    photo_url,
+    birthday_card_url,
+    notes: displayNotes,
+    created_at: raw.created_at || new Date().toISOString(),
+    updated_at: raw.updated_at,
+  };
+}
+
+export function serializeMemberForSupabase(member: Partial<Member> & { id: string }): Record<string, any> {
+  const meta = {
+    baptismal_name: member.baptismal_name || undefined,
+    class_origin: member.class_origin || undefined,
+    entry_year: member.entry_year || undefined,
+    line_id: member.line_id || undefined,
+    instagram_account: member.instagram_account || undefined,
+    assigned_groups: member.assigned_groups || [],
+    community_role: member.community_role || 'anggota_aktif',
+    whatsapp_number: member.whatsapp_number || undefined,
+    photo_url: member.photo_url || undefined,
+    birthday_card_url: member.birthday_card_url || undefined,
+    user_notes: member.notes || undefined,
+  };
+
+  return {
+    id: member.id,
+    full_name: member.full_name,
+    birth_date: member.birth_date,
+    birth_month: member.birth_month,
+    birth_year: member.birth_year,
+    line_user_id: member.line_user_id || '',
+    line_display_name: member.line_display_name || member.full_name,
+    line_verification_status: member.line_verification_status || (member.line_user_id ? 'verified' : 'not_set'),
+    status: member.status || 'active',
+    notes: JSON.stringify(meta),
+    created_at: member.created_at || new Date().toISOString(),
+    updated_at: member.updated_at || new Date().toISOString(),
+  };
+}
+
 // Members - Live from Supabase if configured
 export async function getMembers(): Promise<Member[]> {
   if (isSupabaseConfigured && supabase) {
@@ -956,16 +1071,17 @@ export async function getMembers(): Promise<Member[]> {
         .order('full_name', { ascending: true });
 
       if (!error && Array.isArray(data)) {
+        const parsed = data.map(parseMemberRecord);
         const db = inMemoryDb || loadDatabase();
-        db.members = data as Member[];
+        db.members = parsed;
         saveDatabase(db);
-        return data as Member[];
+        return parsed;
       }
     } catch (err) {
       console.warn('Supabase getMembers warning:', err);
     }
   }
-  return (inMemoryDb || loadDatabase()).members;
+  return (inMemoryDb || loadDatabase()).members.map(parseMemberRecord);
 }
 
 export async function getMemberById(id: string): Promise<Member | undefined> {
@@ -978,11 +1094,12 @@ export async function getMemberById(id: string): Promise<Member | undefined> {
         .maybeSingle();
 
       if (!error && data) {
-        return data as Member;
+        return parseMemberRecord(data);
       }
     } catch (err) {}
   }
-  return (inMemoryDb || loadDatabase()).members.find((m) => m.id === id);
+  const found = (inMemoryDb || loadDatabase()).members.find((m) => m.id === id);
+  return found ? parseMemberRecord(found) : undefined;
 }
 
 export async function createMember(member: Omit<Member, 'id' | 'created_at'>): Promise<Member> {
@@ -994,59 +1111,24 @@ export async function createMember(member: Omit<Member, 'id' | 'created_at'>): P
 
   if (isSupabaseConfigured && supabase) {
     try {
+      const payload = serializeMemberForSupabase(newMember);
       const { data, error } = await supabase
         .from('members')
-        .insert([newMember])
+        .insert([payload])
         .select()
         .maybeSingle();
 
-      if (!error && data) {
-        const db = inMemoryDb || loadDatabase();
-        db.members.push(data as Member);
-        saveDatabase(db);
-        return data as Member;
-      }
       if (error) {
-        console.warn('Supabase member insert warning:', error.message);
-        // Fall back to base columns if newly added columns aren't in Supabase schema cache
-        const extraMeta = {
-          photo_url: newMember.photo_url,
-          community_role: newMember.community_role,
-          whatsapp_number: newMember.whatsapp_number,
-          baptismal_name: newMember.baptismal_name,
-          class_origin: newMember.class_origin,
-          entry_year: newMember.entry_year,
-          line_id: newMember.line_id,
-        };
+        console.error('Supabase createMember error:', error.message);
+        throw new Error(`Gagal menyimpan anggota ke database: ${error.message}`);
+      }
 
-        const basePayload = {
-          id: newMember.id,
-          full_name: newMember.full_name,
-          birth_date: newMember.birth_date,
-          birth_month: newMember.birth_month,
-          birth_year: newMember.birth_year,
-          line_user_id: newMember.line_user_id,
-          line_display_name: newMember.line_display_name,
-          line_verification_status: newMember.line_verification_status,
-          status: newMember.status,
-          notes: newMember.notes || JSON.stringify(extraMeta),
-          created_at: newMember.created_at,
-        };
-        const { data: baseData, error: baseErr } = await supabase
-          .from('members')
-          .insert([basePayload])
-          .select()
-          .maybeSingle();
-
-        if (baseErr) {
-          throw new Error(`Gagal menyimpan anggota ke Supabase: ${baseErr.message}`);
-        }
-        if (baseData) {
-          const db = inMemoryDb || loadDatabase();
-          db.members.push(baseData as Member);
-          saveDatabase(db);
-          return baseData as Member;
-        }
+      if (data) {
+        const parsed = parseMemberRecord(data);
+        const db = inMemoryDb || loadDatabase();
+        db.members.push(parsed);
+        saveDatabase(db);
+        return parsed;
       }
     } catch (err: any) {
       console.error('Supabase createMember exception:', err);
@@ -1076,35 +1158,18 @@ export async function createMembersBulk(
 
   if (isSupabaseConfigured && supabase) {
     try {
-      // 1. Try inserting all columns
-      const { data, error } = await supabase.from('members').insert(newMembers).select();
-      if (!error && Array.isArray(data)) {
-        const db = inMemoryDb || loadDatabase();
-        db.members.push(...newMembers);
-        saveDatabase(db);
-        return newMembers;
-      }
+      const payloads = newMembers.map(serializeMemberForSupabase);
+      const { data, error } = await supabase.from('members').insert(payloads).select();
 
-      // 2. Fall back to base columns if newly added columns aren't in Supabase schema cache
+      if (!error && Array.isArray(data)) {
+        const parsed = data.map(parseMemberRecord);
+        const db = inMemoryDb || loadDatabase();
+        db.members.push(...parsed);
+        saveDatabase(db);
+        return parsed;
+      }
       if (error) {
-        console.warn('Supabase bulk insert warning, falling back to base columns:', error.message);
-        const basePayload = newMembers.map((m) => ({
-          id: m.id,
-          full_name: m.full_name,
-          birth_date: m.birth_date,
-          birth_month: m.birth_month,
-          birth_year: m.birth_year,
-          line_user_id: m.line_user_id || '',
-          line_display_name: m.line_display_name || m.full_name,
-          line_verification_status: m.line_verification_status,
-          status: m.status,
-          notes: m.notes,
-          created_at: m.created_at,
-        }));
-        const { error: baseErr } = await supabase.from('members').insert(basePayload);
-        if (baseErr) {
-          console.error('Supabase createMembersBulk error:', baseErr.message);
-        }
+        console.error('Supabase createMembersBulk error:', error.message);
       }
     } catch (err: any) {
       console.error('Supabase createMembersBulk exception:', err);
@@ -1118,33 +1183,46 @@ export async function createMembersBulk(
 }
 
 export async function updateMember(id: string, updates: Partial<Member>): Promise<Member | null> {
-  const now = new Date().toISOString();
+  const existing = await getMemberById(id);
+  if (!existing) return null;
+
+  const merged: Member = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+
   if (isSupabaseConfigured && supabase) {
     try {
+      const payload = serializeMemberForSupabase(merged);
       const { data, error } = await supabase
         .from('members')
-        .update({ ...updates, updated_at: now })
+        .update(payload)
         .eq('id', id)
         .select()
         .maybeSingle();
 
       if (!error && data) {
+        const parsed = parseMemberRecord(data);
         const db = inMemoryDb || loadDatabase();
         const idx = db.members.findIndex((m) => m.id === id);
-        if (idx !== -1) db.members[idx] = data as Member;
-        else db.members.push(data as Member);
+        if (idx !== -1) db.members[idx] = parsed;
+        else db.members.push(parsed);
         saveDatabase(db);
-        return data as Member;
+        return parsed;
+      }
+      if (error) {
+        console.warn('Supabase updateMember error:', error.message);
       }
     } catch (err) {
-      console.warn('Supabase updateMember error:', err);
+      console.warn('Supabase updateMember exception:', err);
     }
   }
 
   const db = loadDatabase();
   const idx = db.members.findIndex((m) => m.id === id);
   if (idx === -1) return null;
-  db.members[idx] = { ...db.members[idx], ...updates, updated_at: now };
+  db.members[idx] = merged;
   saveDatabase(db);
   return db.members[idx];
 }

@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
       class_origin,
       entry_year,
       line_user_id,
+      line_id,
       instagram_account,
+      whatsapp_number,
+      photo_url,
+      community_role,
       assigned_groups,
       notes,
     } = body;
@@ -56,7 +60,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nama lengkap, tanggal lahir, dan bulan lahir wajib diisi.' }, { status: 400 });
     }
 
-    const verificationStatus = line_user_id && line_user_id.trim().length > 0 ? 'verified' : 'not_set';
+    const verificationStatus = (line_user_id && line_user_id.trim().length > 0) || (line_id && line_id.trim().length > 0)
+      ? 'verified'
+      : 'not_set';
 
     const cleanInstagram = instagram_account
       ? (instagram_account.trim().startsWith('@') ? instagram_account.trim() : `@${instagram_account.trim()}`)
@@ -70,12 +76,16 @@ export async function POST(req: NextRequest) {
       birth_year: birth_year ? Number(birth_year) : undefined,
       class_origin: class_origin?.trim() || undefined,
       entry_year: entry_year ? Number(entry_year) : undefined,
-      line_user_id: line_user_id?.trim() || '',
+      line_user_id: line_user_id?.trim() || line_id?.trim() || '',
+      line_id: line_id?.trim() || line_user_id?.trim() || undefined,
       line_display_name: full_name.trim(),
       instagram_account: cleanInstagram,
+      whatsapp_number: whatsapp_number?.trim() || undefined,
+      photo_url: photo_url?.trim() || undefined,
+      community_role: community_role || 'anggota_aktif',
       line_verification_status: verificationStatus,
       status: 'active',
-      assigned_groups: assigned_groups || [],
+      assigned_groups: Array.isArray(assigned_groups) && assigned_groups.length > 0 ? assigned_groups : [],
       notes: notes?.trim() || undefined,
     });
 

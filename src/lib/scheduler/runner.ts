@@ -430,9 +430,13 @@ export async function runBirthdayBroadcastJob(targetDate: Date = new Date()): Pr
   let totalGroupsBroadcasted = 0;
 
   for (const group of groups) {
-    // Find members belonging to this group
+    // Find members belonging to this group (or default to this group if no specific group restriction)
     const membersInGroup = birthdayMembers.filter(
-      (m) => m.assigned_groups && m.assigned_groups.includes(group.id)
+      (m) =>
+        !m.assigned_groups ||
+        m.assigned_groups.length === 0 ||
+        m.assigned_groups.includes(group.id) ||
+        m.assigned_groups.includes(group.group_id)
     );
 
     if (membersInGroup.length === 0) continue;
