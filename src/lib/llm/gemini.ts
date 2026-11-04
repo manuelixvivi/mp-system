@@ -1,7 +1,9 @@
 import { Devotional } from '@/types';
 import Groq from 'groq-sdk';
 import { getAutomationSettings } from '../db/store';
-import { resolveExactVerse } from '../bible/resolver';
+import { resolveExactVerse, formatVerseReference } from '../bible/resolver';
+
+export { formatVerseReference };
 
 export interface LLMProcessingResult {
   success: boolean;
@@ -26,13 +28,14 @@ export function formatCoffeeBreakTemplate(
 ): string {
   const cleanSaint = (saintCommemoration || '').trim();
   const saintSection = cleanSaint ? `\n🕊️ Peringatan : ${cleanSaint}\n` : '';
+  const cleanRef = formatVerseReference(verseRef);
 
   return `╔═══════☩══♛══☩═══════╗
  ☕ 𝐂𝐎𝐅𝐅𝐄𝐄 𝐁𝐑𝐄𝐀𝐊 𝐖𝐈𝐓𝐇 𝐆𝐎𝐃 ✝️
 ╚═══════☩══✦══☩═══════╝
 ${saintSection}
 📖 𝗩𝗲𝗿𝘀𝗲 𝗼𝗳 𝗧𝗵𝗲 𝗗𝗮𝘆 ⋆⋅☆
-${verseRef.trim()}
+${cleanRef}
 "${verseText.trim().replace(/^"|"$/g, '')}"
 
 💭 𝗧𝗼𝗱𝗮𝘆’ｓ 𝗥𝗲𝗳𝗹𝗲𝗰𝘁𝗶𝗼𝗻 ✧◦°˚°◦♡
@@ -170,14 +173,14 @@ Ketentuan ketat (Strict Rules):
 1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau teks firman. Ayat Alkitab harus asli dan akurat dari bacaan liturgi sumber Katolik.
 2. Pertahankan keaslian konteks teologis dan makna firman dari sumber Katolik.
 3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa).
-4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Lukas 14:27' atau 'Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
+4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS diawali dengan 'Bdk.' dan nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Bdk. Lukas 14:27' atau 'Bdk. Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
 5. Buat "Today's Reflection" (2-4 kalimat): Renungan singkat yang mengena, hangat, gaul, dan nyambung banget sama realita anak muda/kuliahan.
 6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb" dan bikin mikir tentang motivasi hati, prioritas hidup, atau kebiasaan sehari-hari anak muda.
 7. Buat "Take One Step": Satu aksi konkrit praktis yang simpel dan bisa langsung dieksekusi mahasiswa/anak muda hari ini (misal: jeda 2 menit tanpa hp sebelum nugas, sapa teman yang lagi stres, serahin kecemasan ke Tuhan).
 8. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
 {
   "saint_commemoration": "nama peringatan santa/santo hari ini (contoh: Santo Karolus Boromeus, Uskup), atau kosongkan string jika tidak ada peringatan khusus",
-  "verse_reference": "nomor ayat tunggal spesifik yang tepat, contoh: Lukas 14:27 (bukan rentang perikop)",
+  "verse_reference": "nomor ayat tunggal spesifik yang tepat diawali dengan Bdk., contoh: Bdk. Lukas 14:27",
   "verse_text": "isi ayat Alkitab asli tanpa tambahan tafsiran",
   "reflection": "renungan 2-4 kalimat bergaya bahasa gaul santai khas anak muda/kuliahan yang aplikatif",
   "mind_check": "pertanyaan refleksi diri yang jleb dan relevan bagi anak muda",
@@ -225,8 +228,9 @@ ${rawContent.substring(0, 5000)}
         ) {
           const saintName = parsed.saint_commemoration || '';
           const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
+          const finalRef = formatVerseReference(exactRef);
           const formatted = formatCoffeeBreakTemplate(
-            exactRef,
+            finalRef,
             parsed.verse_text,
             parsed.reflection,
             parsed.mind_check,
@@ -237,7 +241,7 @@ ${rawContent.substring(0, 5000)}
           return {
             success: true,
             saint_commemoration: saintName,
-            verse_reference: exactRef,
+            verse_reference: finalRef,
             verse_text: parsed.verse_text,
             reflection: parsed.reflection,
             mind_check: parsed.mind_check,
@@ -285,8 +289,9 @@ ${rawContent.substring(0, 5000)}
           ) {
             const saintName = parsed.saint_commemoration || '';
             const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
+            const finalRef = formatVerseReference(exactRef);
             const formatted = formatCoffeeBreakTemplate(
-              exactRef,
+              finalRef,
               parsed.verse_text,
               parsed.reflection,
               parsed.mind_check,
@@ -297,7 +302,7 @@ ${rawContent.substring(0, 5000)}
             return {
               success: true,
               saint_commemoration: saintName,
-              verse_reference: exactRef,
+              verse_reference: finalRef,
               verse_text: parsed.verse_text,
               reflection: parsed.reflection,
               mind_check: parsed.mind_check,
@@ -316,8 +321,9 @@ ${rawContent.substring(0, 5000)}
   // 3. Intelligent liturgical extraction engine directly from real scraped Catholic content
   const extracted = extractFromScrapedLiturgy(rawTitle, rawContent);
   const exactRef = await resolveExactVerse(extracted.verseText, extracted.verseRef);
+  const finalRef = formatVerseReference(exactRef);
   const formatted = formatCoffeeBreakTemplate(
-    exactRef,
+    finalRef,
     extracted.verseText,
     extracted.reflection,
     extracted.mindCheck,
@@ -328,7 +334,7 @@ ${rawContent.substring(0, 5000)}
   return {
     success: true,
     saint_commemoration: extracted.saintCommemoration,
-    verse_reference: exactRef,
+    verse_reference: finalRef,
     verse_text: extracted.verseText,
     reflection: extracted.reflection,
     mind_check: extracted.mindCheck,

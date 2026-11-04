@@ -1,6 +1,17 @@
 import * as cheerio from 'cheerio';
 
 /**
+ * Ensures a Bible verse reference has the canonical "Bdk. " prefix
+ * e.g. "Lukas 14:27" -> "Bdk. Lukas 14:27"
+ */
+export function formatVerseReference(ref: string): string {
+  const clean = (ref || '').trim();
+  if (!clean) return '';
+  const stripped = clean.replace(/^bdk\.?\s*/i, '').trim();
+  return `Bdk. ${stripped}`;
+}
+
+/**
  * Resolves the exact single Bible verse reference (e.g. "Lukas 14:27" instead of pericope "Lukas 14:25-33")
  * by searching YouVersion Bible Indonesia (bible.com) using the scripture quote text.
  */

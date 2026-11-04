@@ -6,7 +6,7 @@ import {
   addActivityLog,
   getProfileByEmail,
 } from '@/lib/db/store';
-import { formatCoffeeBreakTemplate } from '@/lib/llm/gemini';
+import { formatCoffeeBreakTemplate, formatVerseReference } from '@/lib/llm/gemini';
 import { DevotionalAuditStatus, UserRole } from '@/types';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 
@@ -54,8 +54,10 @@ export async function POST(req: NextRequest) {
 
     // If updating content (inline edit)
     if (action === 'update_content' && updatedContent) {
+      const rawRef = updatedContent.verse_reference !== undefined ? updatedContent.verse_reference : devotional.verse_reference;
+      const finalVerseRef = formatVerseReference(rawRef);
       const formatted = formatCoffeeBreakTemplate(
-        updatedContent.verse_reference || devotional.verse_reference,
+        finalVerseRef,
         updatedContent.verse_text || devotional.verse_text,
         updatedContent.reflection || devotional.reflection,
         updatedContent.mind_check || devotional.mind_check,
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
       const updated = await saveDevotional({
         ...devotional,
         ...updatedContent,
+        verse_reference: finalVerseRef,
         formatted_message: formatted,
         updated_at: new Date().toISOString(),
       });

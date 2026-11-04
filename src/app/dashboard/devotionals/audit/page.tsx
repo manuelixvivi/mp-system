@@ -235,12 +235,16 @@ export default function DevotionalAuditPage() {
     );
   }
 
+  const displayVerseRef = verseRef
+    ? (verseRef.trim().toLowerCase().startsWith('bdk.') ? verseRef.trim() : `Bdk. ${verseRef.trim().replace(/^bdk\.?\s*/i, '')}`)
+    : '';
+
   const formattedPreview = `╔═══════☩══♛══☩═══════╗
  ☕ 𝐂𝐎𝐅𝐅𝐄𝐄 𝐁𝐑𝐄𝐀𝐊 𝐖𝐈𝐓𝐇 𝐆𝐎𝐃 ✝️
 ╚═══════☩══✦══☩═══════╝
 ${saintCommemoration ? `\n🕊️ Peringatan : ${saintCommemoration}\n` : ''}
 📖 𝗩𝗲𝗿𝘀𝗲 𝗼𝗳 𝗧𝗵𝗲 𝗗𝗮𝘆 ⋆⋅☆
-${verseRef}
+${displayVerseRef}
 "${verseText.replace(/^"|"$/g, '')}"
 
 💭 𝗧𝗼𝗱𝗮𝘆’ｓ 𝗥𝗲𝗳𝗹𝗲𝗰𝘁𝗶𝗼𝗻 ✧◦°˚°◦♡
