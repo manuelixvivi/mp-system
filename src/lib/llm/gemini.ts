@@ -18,6 +18,24 @@ export interface LLMProcessingResult {
   error?: string;
 }
 
+/**
+ * Clean up text to strictly enforce "kamu" / "kita" instead of "lo" / "lu" / "gue" / "gw"
+ */
+export function sanitizeYouthWording(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\bkalo lo\b/gi, 'kalau kamu')
+    .replace(/\bkalo\b/gi, 'kalau')
+    .replace(/\b(lo|lu)\b/gi, 'kamu')
+    .replace(/\b(gue|gw)\b/gi, 'kita')
+    .replace(/\bbikin lo\b/gi, 'bikin kamu')
+    .replace(/\bbuat lo\b/gi, 'buat kamu')
+    .replace(/\bke lo\b/gi, 'ke kamu')
+    .replace(/\bdiri lo\b/gi, 'diri kamu')
+    .replace(/\bhidup lo\b/gi, 'hidup kamu')
+    .replace(/\bhati lo\b/gi, 'hati kamu');
+}
+
 export function formatCoffeeBreakTemplate(
   verseRef: string,
   verseText: string,
@@ -29,6 +47,9 @@ export function formatCoffeeBreakTemplate(
   const cleanSaint = (saintCommemoration || '').trim();
   const saintSection = cleanSaint ? `\n🕊️ Peringatan : ${cleanSaint}\n` : '';
   const cleanRef = formatVerseReference(verseRef);
+  const cleanReflection = sanitizeYouthWording(reflection.trim());
+  const cleanMindCheck = sanitizeYouthWording(mindCheck.trim());
+  const cleanTakeOneStep = sanitizeYouthWording(takeOneStep.trim());
 
   return `╔═══════☩══♛══☩═══════╗
  ☕ 𝐂𝐎𝐅𝐅𝐄𝐄 𝐁𝐑𝐄𝐀𝐊 𝐖𝐈𝐓𝐇 𝐆𝐎𝐃 ✝️
@@ -39,17 +60,15 @@ ${cleanRef}
 "${verseText.trim().replace(/^"|"$/g, '')}"
 
 💭 𝗧𝗼𝗱𝗮𝘆’ｓ 𝗥𝗲𝗳𝗹𝗲𝗰𝘁𝗶𝗼𝗻 ✧◦°˚°◦♡
-${reflection.trim()}
+${cleanReflection}
 
 🧠 𝗠𝗶𝗻𝗱 𝗖𝗵𝗲𝗰𝗸 +✟+
-${mindCheck.trim()}
+${cleanMindCheck}
 
-✨ 𝗧𝗮𝗸𝗲 𝗢𝗻𝗲 𝗦𝘁𝗲𝗽 ⋆ ᭝ ᨳଓ ՟
-${takeOneStep.trim()}
+✨ 𝗧𝗮𝗸𝗲 𝗢𝗻𝗲 𝗦𝘁𝗲𝗽 ⋆ ᨳଓ ՟
+${cleanTakeOneStep}
 
-“𝓞𝓷𝓮 𝓿𝓮𝓻𝓼𝓮.
-𝓞𝓷𝓮 𝓻𝓮𝓯𝓵𝓮𝓬𝓽𝓲𝓸𝓷.
-𝓞𝓷𝓮 𝓼𝓽𝓮𝓹 𝓬𝓵𝓸𝓼𝓮𝓻 𝓽𝓸 𝓗𝓲𝓶.”`;
+“𝓞𝓷𝓮 𝓿𝓮𝓻𝓼𝓮. 𝓞𝓷𝓮 𝓻𝓮𝓯𝓵𝓮𝓬𝓽𝓲𝓸𝓷. 𝓞𝓷𝓮 𝓼𝓽𝓮𝓹 𝓬𝓵𝓸𝓼𝓮𝓻 𝓽𝓸 𝓗𝓲𝓶.”`;
 }
 
 // Comprehensive liturgical Golden Verse map for Catholic daily Gospel pericopes with tailored youth reflections
@@ -324,7 +343,12 @@ Tugas Anda adalah merangkum renungan harian Katolik berikut ke dalam format resm
 
 Panduan Persona & Gaya Bahasa (Tone of Voice):
 - Target Audiens: Mahasiswa & anak muda (Gen Z / Young Adults).
-- Bahasa: Gaul santai, akrab (gunakan sapaan seperti "kita", "kamu"), luwes, TIDAK KAKU/FORMAL, tidak menggunakan bahasa kuno/kolot, dan tidak menggurui. Seperti obrolan hangat dari sahabat rohani yang saling menguatkan.
+- Bahasa: Santai, hangat, akrab, luwes, kekinian, TIDAK KAKU/FORMAL, tidak menggunakan bahasa kuno/kolot, dan tidak menggurui. Seperti obrolan hangat dari sahabat rohani yang saling menguatkan.
+- ATURAN KATA GANTI (SANGAT KETAT & WAJIB DIIKUTI):
+  * WAJIB gunakan kata sapaan "kamu" atau "kita".
+  * DILARANG KERAS menggunakan kata "lo", "lu", "gue", atau "gw"!
+  * Selalu gunakan kata "kamu" untuk menyapa pembaca (contoh: "saat kamu merasa lelah", "beban yang kamu bawa", "ketika kamu bantu teman", "kalau kamu lagi overthinking").
+  * Hindari gaya bahasa tongkrongan jalanan yang kasar; tetap gunakan bahasa anak muda yang sopan, hangat, sejuk, dan menguatkan.
 - Konteks Nyata: Hubungkan refleksi secara natural dengan realita kehidupan anak muda & perkuliahan — misalnya: deadline tugas/kuis, skripsi, overthinking masa depan & karier, FOMO, burnout/lelah mental, scrolling sosmed tanpa sadar, drama circle pertemanan, relationship/gebetan, dan pentingnya nemuin damai sejati bareng Tuhan di sela rutinitas yang padat.
 
 Ketentuan ketat (Strict Rules):
@@ -332,17 +356,17 @@ Ketentuan ketat (Strict Rules):
 2. Pertahankan keaslian konteks teologis dan makna firman dari sumber Katolik.
 3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa). Jika tidak ada peringatan khusus, kosongkan string "".
 4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS diawali dengan 'Bdk.' dan nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Bdk. Lukas 15:7' atau 'Bdk. Lukas 16:10', BUKAN rentang perikop penuh seperti 'Lukas 15:1-10').
-5. Buat "Today's Reflection" (2-3 kalimat): Renungan singkat yang mengena, hangat, gaul, dan nyambung banget sama realita anak muda/kuliahan.
-6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb", SPESIFIK dan MENDALAM berakar langsung pada pesan Injil/tema hari ini (JANGAN gunakan pertanyaan klise/template umum!).
-7. Buat "Take One Step": Satu aksi konkrit praktis yang sangat SPESIFIK dan LANGSUNG BERHUBUNGAN dengan pesan firman hari ini (JANGAN mengulang formula umum seperti "jeda 2 menit tarik napas"!).
+5. Buat "Today's Reflection" (2-3 kalimat): Renungan singkat yang mengena, hangat, santai, dan nyambung banget sama realita anak muda/kuliahan. Menggunakan sapaan "kamu"/"kita" (TANPA kata "lo"/"lu"/"gue").
+6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb", SPESIFIK dan MENDALAM berakar langsung pada pesan Injil/tema hari ini (Gunakan sapaan "kamu", JANGAN gunakan kata "lo", dan JANGAN gunakan pertanyaan klise/template umum!).
+7. Buat "Take One Step": Satu aksi konkrit praktis yang sangat SPESIFIK dan LANGSUNG BERHUBUNGAN dengan pesan firman hari ini (Gunakan kata "kamu", JANGAN gunakan kata "lo", dan JANGAN mengulang formula umum seperti "jeda 2 menit tarik napas"!).
 8. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
 {
   "saint_commemoration": "nama peringatan santa/santo hari ini atau kosong jika tidak ada",
   "verse_reference": "nomor ayat tunggal spesifik yang tepat diawali dengan Bdk., contoh: Bdk. Lukas 15:7",
   "verse_text": "isi ayat Alkitab asli tanpa tambahan tafsiran",
-  "reflection": "renungan 2-3 kalimat bergaya bahasa gaul santai khas anak muda/kuliahan yang aplikatif",
-  "mind_check": "pertanyaan refleksi diri yang jleb dan spesifik dengan tema firman hari ini",
-  "take_one_step": "langkah konkrit nyata hari ini yang spesifik nyambung dengan tema firman"
+  "reflection": "renungan 2-3 kalimat bergaya bahasa santai dan hangat khas anak muda/kuliahan dengan sapaan kamu/kita",
+  "mind_check": "pertanyaan refleksi diri yang jleb dan spesifik dengan tema firman hari ini menggunakan sapaan kamu",
+  "take_one_step": "langkah konkrit nyata hari ini yang spesifik nyambung dengan tema firman menggunakan sapaan kamu"
 }
 
 Judul Artikel: ${rawTitle}
@@ -369,7 +393,7 @@ ${rawContent.substring(0, 4500)}
             {
               role: 'system',
               content:
-                'Anda adalah sahabat rohani anak muda dan mahasiswa Katolik di MP Community. Kemas renungan dengan bahasa gaul, santai, hangat, dan sangat relatable bagi kehidupan perkuliahan dan anak muda saat ini, tanpa mengubah keaslian isi ayat firman Tuhan. Kembalikan data HANYA dalam format JSON valid.',
+                'Anda adalah sahabat rohani anak muda dan mahasiswa Katolik di MP Community. Kemas renungan dengan bahasa santai, hangat, akrab, dan sangat relatable bagi kehidupan perkuliahan dan anak muda saat ini. WAJIB menggunakan sapaan "kamu" atau "kita". DILARANG KERAS menggunakan kata "lo", "lu", "gue", "gw". Jangan mengubah keaslian isi ayat firman Tuhan. Kembalikan data HANYA dalam format JSON valid.',
             },
             {
               role: 'user',
@@ -393,12 +417,15 @@ ${rawContent.substring(0, 4500)}
             const saintName = parsed.saint_commemoration || '';
             const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
             const finalRef = formatVerseReference(exactRef);
+            const cleanReflection = sanitizeYouthWording(parsed.reflection);
+            const cleanMindCheck = sanitizeYouthWording(parsed.mind_check);
+            const cleanTakeOneStep = sanitizeYouthWording(parsed.take_one_step);
             const formatted = formatCoffeeBreakTemplate(
               finalRef,
               parsed.verse_text,
-              parsed.reflection,
-              parsed.mind_check,
-              parsed.take_one_step,
+              cleanReflection,
+              cleanMindCheck,
+              cleanTakeOneStep,
               saintName
             );
 
@@ -408,9 +435,9 @@ ${rawContent.substring(0, 4500)}
               saint_commemoration: saintName,
               verse_reference: finalRef,
               verse_text: parsed.verse_text,
-              reflection: parsed.reflection,
-              mind_check: parsed.mind_check,
-              take_one_step: parsed.take_one_step,
+              reflection: cleanReflection,
+              mind_check: cleanMindCheck,
+              take_one_step: cleanTakeOneStep,
               formatted_message: formatted,
               is_fallback_eligible: true,
             };
@@ -456,12 +483,15 @@ ${rawContent.substring(0, 4500)}
             const saintName = parsed.saint_commemoration || '';
             const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
             const finalRef = formatVerseReference(exactRef);
+            const cleanReflection = sanitizeYouthWording(parsed.reflection);
+            const cleanMindCheck = sanitizeYouthWording(parsed.mind_check);
+            const cleanTakeOneStep = sanitizeYouthWording(parsed.take_one_step);
             const formatted = formatCoffeeBreakTemplate(
               finalRef,
               parsed.verse_text,
-              parsed.reflection,
-              parsed.mind_check,
-              parsed.take_one_step,
+              cleanReflection,
+              cleanMindCheck,
+              cleanTakeOneStep,
               saintName
             );
 
@@ -470,9 +500,9 @@ ${rawContent.substring(0, 4500)}
               saint_commemoration: saintName,
               verse_reference: finalRef,
               verse_text: parsed.verse_text,
-              reflection: parsed.reflection,
-              mind_check: parsed.mind_check,
-              take_one_step: parsed.take_one_step,
+              reflection: cleanReflection,
+              mind_check: cleanMindCheck,
+              take_one_step: cleanTakeOneStep,
               formatted_message: formatted,
               is_fallback_eligible: true,
             };
