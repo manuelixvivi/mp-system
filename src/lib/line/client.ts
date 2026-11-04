@@ -158,7 +158,40 @@ export class LineApiClient {
   }
 
   /**
-   * Format Birthday Message with Native LINE Mention (textV2 API)
+   * Retrieves group member profile (displayName, pictureUrl) from LINE Messaging API
+   */
+  async getGroupMemberProfile(
+    groupId: string,
+    userId: string
+  ): Promise<{ displayName: string; userId: string; pictureUrl?: string } | null> {
+    if (!this.channelAccessToken || !groupId || !userId) return null;
+    try {
+      const response = await fetch(
+        `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.channelAccessToken}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          displayName: data.displayName || '',
+          userId: data.userId || userId,
+          pictureUrl: data.pictureUrl,
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[LINE CLIENT] getGroupMemberProfile warning for ${userId} in ${groupId}:`, err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Format Birthday Message with Native LINE Mention (textV2 API) or Text Fallback
    * PRD Requirement: Max 20 mentions per batch, no teddy bears.
    */
   formatBirthdayMentionMessage(members: Member[]): any {
@@ -169,23 +202,32 @@ export class LineApiClient {
       };
     }
 
-    // Build textV2 substitution object
+    // Build textV2 substitution object or fallback text mentions
     const substitution: LineTextV2Substitution = {};
-    let greetingHeader = '𝓱𝓪𝓹𝓹𝔂 𝓫𝓲𝓻𝓽𝓱𝓭𝓪𝔂 ';
+    const mentionTokens: string[] = [];
 
     members.forEach((m, idx) => {
-      const key = `user_${idx}`;
-      greetingHeader += `{${key}} `;
-      substitution[key] = {
-        type: 'mention',
-        mentionee: {
-          type: 'user',
-          userId: m.line_user_id || m.id,
-        },
-      };
+      const hasValidLineUserId = m.line_user_id && m.line_user_id.trim().startsWith('U');
+      if (hasValidLineUserId) {
+        const key = `user_${idx}`;
+        mentionTokens.push(`{${key}}`);
+        substitution[key] = {
+          type: 'mention',
+          mentionee: {
+            type: 'user',
+            userId: m.line_user_id!.trim(),
+          },
+        };
+      } else {
+        const fallbackName = m.line_id && m.line_id.startsWith('@')
+          ? m.line_id
+          : `@${m.full_name || m.nickname || 'Sahabat MP'}`;
+        mentionTokens.push(fallbackName);
+      }
     });
 
-    greetingHeader += '!\n\n';
+    const mentionListStr = mentionTokens.join(', ');
+    const greetingHeader = `𝓱𝓪𝓹𝓹𝔂 𝓫𝓲𝓻𝓽𝓱𝓭𝓪𝔂 ${mentionListStr} !\n\n`;
 
     const messageBody = `Your birthday is a perfect reminder of this truth—that each day, and especially today, God’s love surrounds you, His grace renews you, and His mercies flow abundantly over your life. No matter what the past year held, His faithfulness has brought you through, and His promises are the foundation for all the joy and blessings awaiting you in the year ahead.
 
@@ -194,10 +236,17 @@ export class LineApiClient {
 
     const fullText = greetingHeader + messageBody;
 
+    if (Object.keys(substitution).length > 0) {
+      return {
+        type: 'textV2',
+        text: fullText,
+        substitution,
+      };
+    }
+
     return {
-      type: 'textV2',
+      type: 'text',
       text: fullText,
-      substitution,
     };
   }
 
@@ -248,15 +297,24 @@ export class LineApiClient {
       const mentionTokens: string[] = [];
 
       batchMembers.forEach((m, idx) => {
-        const tokenKey = `user_${i}_${idx}`;
-        mentionTokens.push(`{${tokenKey}}`);
-        substitution[tokenKey] = {
-          type: 'mention',
-          mentionee: {
-            type: 'user',
-            userId: m.line_user_id || m.id,
-          },
-        };
+        const hasValidLineUserId = m.line_user_id && m.line_user_id.trim().startsWith('U');
+        if (hasValidLineUserId) {
+          const tokenKey = `user_${i}_${idx}`;
+          mentionTokens.push(`{${tokenKey}}`);
+          substitution[tokenKey] = {
+            type: 'mention',
+            mentionee: {
+              type: 'user',
+              userId: m.line_user_id!.trim(),
+            },
+          };
+        } else {
+          // If no line_user_id, mention by display name or line_id directly in text!
+          const cleanName = m.line_id && m.line_id.startsWith('@')
+            ? m.line_id
+            : `@${m.full_name || m.nickname || 'Sahabat MP'}`;
+          mentionTokens.push(cleanName);
+        }
       });
 
       let mentionListStr = '';
@@ -277,11 +335,16 @@ export class LineApiClient {
         textContent = `𝓱𝓪𝓹𝓹𝔂 𝓫𝓲𝓻𝓽𝓱𝓭𝓪𝔂 also to ${mentionListStr} !\n\nMay God bless you abundantly, fill your hearts with peace and guide your steps in this new age. Have a joyful celebration with MP Community! 🙏✨`;
       }
 
-      const messagePayload = {
-        type: 'textV2',
+      const messagePayload: any = {
         text: textContent,
-        substitution,
       };
+
+      if (Object.keys(substitution).length > 0) {
+        messagePayload.type = 'textV2';
+        messagePayload.substitution = substitution;
+      } else {
+        messagePayload.type = 'text';
+      }
 
       batches.push({
         batchNumber: i + 1,

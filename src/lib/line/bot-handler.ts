@@ -5,6 +5,7 @@ import {
   addActivityLog,
   getDevotionalByDate,
   getMembers,
+  updateMember,
   getLineGroups,
   updateDevotionalAudit,
   addDelivery,
@@ -122,6 +123,40 @@ export async function handleLineWebhookEvent(event: any): Promise<any> {
 
           return { status: 'replied_get_all_groupid_in_group', total: allGroups.length };
         }
+      }
+    }
+
+    // Background Auto-Harvesting: capture member LINE User ID if not linked yet
+    const groupSenderUserId = event.source.userId;
+    if (groupSenderUserId && groupId) {
+      try {
+        const allMembers = await getMembers();
+        const unlinked = allMembers.filter((m) => !m.line_user_id || m.line_user_id.trim().length === 0);
+        if (unlinked.length > 0) {
+          const memberProfile = await lineClient.getGroupMemberProfile(groupId, groupSenderUserId);
+          if (memberProfile?.displayName) {
+            const dispLower = memberProfile.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const match = unlinked.find((m) => {
+              const fullClean = (m.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const nickClean = (m.nickname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const lineIdClean = (m.line_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              return (
+                (fullClean.length >= 3 && dispLower.includes(fullClean)) ||
+                (nickClean.length >= 3 && dispLower.includes(nickClean)) ||
+                (lineIdClean.length >= 3 && dispLower.includes(lineIdClean))
+              );
+            });
+            if (match) {
+              await updateMember(match.id, { line_user_id: groupSenderUserId });
+              console.log(
+                `[AUTO-HARVEST] Auto-linked member "${match.full_name}" to LINE User ID: ${groupSenderUserId} (${memberProfile.displayName})`
+              );
+            }
+          }
+        }
+      } catch (err: any) {
+        // silent background warning
+        console.warn('[AUTO-HARVEST] Background harvest warning:', err.message);
       }
     }
 

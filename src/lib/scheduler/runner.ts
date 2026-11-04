@@ -445,18 +445,13 @@ export async function runBirthdayBroadcastJob(targetDate: Date = new Date()): Pr
       addNotification({
         recipient_role: 'logistik',
         title: 'LINE ID Anggota Ultah Belum Ada',
-        message: `${unverifiedMembers.map((m) => m.full_name).join(', ')} belum memiliki LINE User ID yang ditautkan.`,
-        type: 'warning',
+        message: `${unverifiedMembers.map((m) => m.full_name).join(', ')} belum memiliki LINE User ID. Nama mereka tetap disebut via teks di ucapan ultah.`,
+        type: 'info',
       });
     }
 
-    if (validMembers.length === 0) {
-      console.warn(`[BIRTHDAY JOB] Group ${group.group_name} has birthdays today, but none have valid LINE IDs.`);
-      continue;
-    }
-
-    // 3. Build batches respecting <= 20 mentions per message (PRD 5.6 & 5.7)
-    const batches = LineApiClient.buildBirthdayBatches(validMembers);
+    // 3. Build batches for all members in group (valid LINE ID gets blue tag, unlinked gets text mention)
+    const batches = LineApiClient.buildBirthdayBatches(membersInGroup);
     const campaignId = `bday_${dateIso}_${group.id}`;
 
     for (const batch of batches) {
