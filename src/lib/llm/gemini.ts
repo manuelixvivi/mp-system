@@ -52,49 +52,80 @@ ${takeOneStep.trim()}
 𝓞𝓷𝓮 𝓼𝓽𝓮𝓹 𝓬𝓵𝓸𝓼𝓮𝓻 𝓽𝓸 𝓗𝓲𝓶.”`;
 }
 
-// Comprehensive liturgical Golden Verse map for Catholic daily Gospel pericopes
-const GOSPEL_GOLDEN_VERSES: Record<string, { ref: string; text: string; reflectionSummary?: string }> = {
+// Comprehensive liturgical Golden Verse map for Catholic daily Gospel pericopes with tailored youth reflections
+const GOSPEL_GOLDEN_VERSES: Record<
+  string,
+  { ref: string; text: string; reflectionSummary?: string; mindCheck?: string; takeOneStep?: string }
+> = {
   'Lukas 15:1-10': {
     ref: 'Lukas 15:7',
     text: 'Demikian juga akan ada sukacita di sorga karena satu orang berdosa yang bertobat.',
     reflectionSummary:
-      'Tuhan nggak pernah menyerah mencari kita, bahkan saat kita merasa tersesat atau menjauh. Di mata-Nya, setiap kita itu berharga banget dan selalu ada kesempatan kedua buat memulai lagi bareng Dia.',
+      'Tuhan nggak pernah menyerah mencari kita, bahkan saat kita merasa tersesat atau menjauh di tengah beban kuliah. Di mata-Nya, setiap kita itu berharga banget dan selalu ada pelukan pengampunan buat memulai lagi bareng Dia.',
+    mindCheck:
+      'Saat kamu merasa terasing, gagal, atau overthinking masa depan, apa yang sebenarnya menghalangi kamu untuk berserah dan mengakui bahwa kamu butuh pelukan kasih Tuhan?',
+    takeOneStep:
+      'Ketik satu doa jujur di notes hp tanpa jaim: akui beban yang lagi bikin kamu ngerasa jauh, dan serahkan seutuhnya ke tangan Tuhan hari ini.',
   },
   'Lukas 16:1-8': {
     ref: 'Lukas 16:8',
     text: 'Anak-anak dunia ini lebih cerdik terhadap sesamanya daripada anak-anak terang.',
     reflectionSummary:
       'Kalau buat urusan tugas, karier, dan masa depan kita bisa se-effort itu, jangan sampai urusan rohani dan relasi bareng Tuhan kita santai-santai aja. Yuk lebih bijak dan sungguh-sungguh mengelola kepercayaan yang Tuhan kasih.',
+    mindCheck:
+      'Jika energimu terkuras 90% buat urusan duniawi dan validasi sosmed, sisa berapa persen hati dan waktumu yang benar-benar kamu persembahkan buat Tuhan?',
+    takeOneStep:
+      'Alokasikan 5 menit hening pertama sebelum scrolling media sosial begitu bangun tidur besok pagi untuk menyapa Tuhan.',
   },
   'Lukas 16:9-15': {
     ref: 'Lukas 16:10',
     text: 'Barangsiapa setia dalam perkara-perkara kecil, ia setia juga dalam perkara-perkara besar.',
     reflectionSummary:
       'Terkadang kita nunggu momentum besar baru mau setia. Padahal integritas dan karakter kita dibentuk dari hal-hal kecil tiap hari: disiplin waktu, jujur ngerjain tugas, dan konsisten jaga hati.',
+    mindCheck:
+      'Hal kecil apa dalam kuliah atau pertemanan yang masih sering kamu sepelekan karena ngerasa "ah cuma hal sepele nggak ada yang lihat"?',
+    takeOneStep:
+      'Selesaikan satu tugas kecil yang selama ini kamu tunda-tunda hari ini dengan sepenuh hati dan jujur tanpa jalan pintas.',
   },
   'Lukas 17:7-10': {
     ref: 'Lukas 17:10',
     text: 'Apabila kamu telah melakukan segala sesuatu yang ditugaskan kepadamu, hendaklah kamu berkata: Kami adalah hamba-hamba yang tidak berguna.',
     reflectionSummary:
       'Melayani dan berbuat baik itu bukan ajang cari panggung atau validasi manusia. Ketika kita melayani dengan tulus tanpa pamrih, di situlah damai dan sukacita sejati bakal ngalir dalam hidup kita.',
+    mindCheck:
+      'Ketika kamu berbuat baik atau aktif di komunitas/kampus, motivasi terdalammu beneran tulus atau diam-diam masih haus pengakuan dan pujian orang lain?',
+    takeOneStep:
+      'Lakukan satu kebaikan tersembunyi hari ini untuk teman atau orang terdekat tanpa menceritakannya ke siapa pun atau mempostingnya di medsos.',
   },
   'Matius 25:1-13': {
     ref: 'Matius 25:13',
     text: 'Karena itu, berjaga-jagalah, sebab kamu tidak tahu akan hari maupun akan saatnya.',
     reflectionSummary:
       'Jangan biarkan pelita iman kita padam karena terdistraksi hiruk-pikuk rutinitas dan scrolling sosmed. Tetap jaga hati yang peka dan siap sedia mendengarkan suara Tuhan di setiap momen.',
+    mindCheck:
+      'Apakah "minyak pelita" rohanimu masih menyala hangat, atau batinmu sudah mulai kering dan lelah karena terlalu sibuk nugas tanpa hening bareng Tuhan?',
+    takeOneStep:
+      'Matikan notifikasi gadget selama 5 menit saat sore atau malam ini, nyalakan lilin atau hening, dan isi kembali energi jiwamu bersama Kristus.',
   },
   'Yohanes 2:13-22': {
     ref: 'Yohanes 2:19',
     text: 'Rombak Bait Allah ini, dan dalam tiga hari Aku akan mendirikannya kembali.',
     reflectionSummary:
       'Tubuh dan hati kita adalah bait Roh Kudus yang hidup. Yuk bersihin hati kita dari rasa dendam, iri hati, dan overthinking yang nggak berfaedah, biar hadirat Tuhan benar-benar nyata memimpin langkah kita.',
+    mindCheck:
+      '"Barang dagangan" atau sampah emosi apa yang saat ini mengotori hatimu: rasa iri pada pencapaian circle kampus, atau dendam yang belum selesai?',
+    takeOneStep:
+      'Sebut nama orang yang pernah mengecewakanmu dalam doa pribadi hari ini, dan secara sadar putuskan untuk melepaskan pengampunan.',
   },
   'Lukas 14:25-33': {
     ref: 'Lukas 14:27',
     text: 'Barangsiapa tidak memikul salibnya dan mengikut Aku, ia tidak dapat menjadi murid-Ku.',
     reflectionSummary:
       'Mengikut Yesus bukan berarti hidup bebas hambatan, tapi punya penyertaan Tuhan di setiap proses. Belajar pikul komitmen kita hari ini dengan setia, karena Tuhan yang bakal kuatkan kita.',
+    mindCheck:
+      'Ketika komitmen kuliah atau pelayanan mulai terasa berat dan bikin capek, apakah kamu cenderung langsung mau menyerah atau datang minta kekuatan ke Tuhan?',
+    takeOneStep:
+      'Tuliskan satu tantangan terberatmu minggu ini di kertas, lalu buat komitmen untuk menjalaninya dengan senyuman dan doa penyerahan.',
   },
 };
 
@@ -249,16 +280,23 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
 
   // 5. Mind Check
   let mindCheck = '';
-  if (theme) {
-    mindCheck = `Terkait "${theme}", apa satu hal konkret dalam keseharian atau kuliahmu yang masih sering kamu andalkan dengan kekuatan sendiri daripada berserah ke Tuhan?`;
+  if (knownEntry?.mindCheck) {
+    mindCheck = knownEntry.mindCheck;
+  } else if (theme) {
+    mindCheck = `Merespons tema "${theme}", apa satu kebiasaan atau kekhawatiran terbesar dalam perkuliahanmu yang selama ini masih kamu tahan sendiri dan belum berani kamu serahkan ke tangan Tuhan?`;
   } else {
-    mindCheck =
-      'Pas lagi pusing sama urusan tugas, circle pertemanan, atau overthinking masa depan, siapa yang biasanya jadi pelarian pertama kamu: sosmed, validasi orang lain, atau bersujud ke Tuhan?';
+    mindCheck = `Saat rutinitas dan deadline perkuliahan mulai menekan, apa yang paling sering mengalihkan pandanganmu dari kebenaran firman ${verseRef}?`;
   }
 
   // 6. Take One Step
-  const takeOneStep =
-    'Ambil jeda 2 menit sebelum mulai nugas atau beraktivitas hari ini: tarik napas, doakan satu hal yang paling bikin cemas, dan percaya Tuhan yang pegang kendali.';
+  let takeOneStep = '';
+  if (knownEntry?.takeOneStep) {
+    takeOneStep = knownEntry.takeOneStep;
+  } else if (theme) {
+    takeOneStep = `Wujudkan tema "${theme}" hari ini: pilih satu hal konkret yang kamu hadapi hari ini, jalani dengan kejujuran hati, dan kirimkan satu pesan penyemangat kepada teman yang sedang lelah.`;
+  } else {
+    takeOneStep = `Tuliskan satu ayat firman ${verseRef} di layar kunci hp atau catatan mejamu sebagai pengingat kehadiran Tuhan sepanjang aktivitas hari ini.`;
+  }
 
   return {
     saintCommemoration,
@@ -272,7 +310,7 @@ function extractFromScrapedLiturgy(rawTitle: string, rawContent: string): {
 
 /**
  * Process scraped Catholic devotional content into Coffee Break with God structure
- * Supports Groq API (Ultra-low latency Llama-3.3-70b), Gemini API, and intelligent liturgical extraction
+ * Supports Groq API (openai/gpt-oss-120b, llama-3.3-70b-versatile), Gemini API, and intelligent liturgical extraction
  */
 export async function processDevotionalWithLLM(
   rawTitle: string,
@@ -292,87 +330,95 @@ Panduan Persona & Gaya Bahasa (Tone of Voice):
 Ketentuan ketat (Strict Rules):
 1. JANGAN PERNAH mengarang kutipan ayat Alkitab atau teks firman. Ayat Alkitab harus asli dan akurat dari bacaan liturgi sumber Katolik.
 2. Pertahankan keaslian konteks teologis dan makna firman dari sumber Katolik.
-3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa).
-4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS diawali dengan 'Bdk.' dan nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Bdk. Lukas 14:27' atau 'Bdk. Roma 12:2', BUKAN rentang perikop penuh seperti 'Lukas 14:25-33').
-5. Buat "Today's Reflection" (2-4 kalimat): Renungan singkat yang mengena, hangat, gaul, dan nyambung banget sama realita anak muda/kuliahan.
-6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb" dan bikin mikir tentang motivasi hati, prioritas hidup, atau kebiasaan sehari-hari anak muda.
-7. Buat "Take One Step": Satu aksi konkrit praktis yang simpel dan bisa langsung dieksekusi mahasiswa/anak muda hari ini (misal: jeda 2 menit tanpa hp sebelum nugas, sapa teman yang lagi stres, serahin kecemasan ke Tuhan).
+3. Ekstrak nama peringatan santo/santa jika ada pada hari tersebut (Peringatan Santo/Santa). Jika tidak ada peringatan khusus, kosongkan string "".
+4. Ekstrak satu ayat emas utama (Verse of The Day): referensi ayat HARUS diawali dengan 'Bdk.' dan nomor ayat tunggal spesifik yang tepat dari teks kutipan (contoh: 'Bdk. Lukas 15:7' atau 'Bdk. Lukas 16:10', BUKAN rentang perikop penuh seperti 'Lukas 15:1-10').
+5. Buat "Today's Reflection" (2-3 kalimat): Renungan singkat yang mengena, hangat, gaul, dan nyambung banget sama realita anak muda/kuliahan.
+6. Buat "Mind Check": Satu pertanyaan refleksi diri yang "jleb", SPESIFIK dan MENDALAM berakar langsung pada pesan Injil/tema hari ini (JANGAN gunakan pertanyaan klise/template umum!).
+7. Buat "Take One Step": Satu aksi konkrit praktis yang sangat SPESIFIK dan LANGSUNG BERHUBUNGAN dengan pesan firman hari ini (JANGAN mengulang formula umum seperti "jeda 2 menit tarik napas"!).
 8. Kembalikan data HANYA dalam bentuk JSON valid dengan format:
 {
-  "saint_commemoration": "nama peringatan santa/santo hari ini (contoh: Santo Karolus Boromeus, Uskup), atau kosongkan string jika tidak ada peringatan khusus",
-  "verse_reference": "nomor ayat tunggal spesifik yang tepat diawali dengan Bdk., contoh: Bdk. Lukas 14:27",
+  "saint_commemoration": "nama peringatan santa/santo hari ini atau kosong jika tidak ada",
+  "verse_reference": "nomor ayat tunggal spesifik yang tepat diawali dengan Bdk., contoh: Bdk. Lukas 15:7",
   "verse_text": "isi ayat Alkitab asli tanpa tambahan tafsiran",
-  "reflection": "renungan 2-4 kalimat bergaya bahasa gaul santai khas anak muda/kuliahan yang aplikatif",
-  "mind_check": "pertanyaan refleksi diri yang jleb dan relevan bagi anak muda",
-  "take_one_step": "langkah konkrit nyata hari ini yang simpel dan bisa langsung dilakukan"
+  "reflection": "renungan 2-3 kalimat bergaya bahasa gaul santai khas anak muda/kuliahan yang aplikatif",
+  "mind_check": "pertanyaan refleksi diri yang jleb dan spesifik dengan tema firman hari ini",
+  "take_one_step": "langkah konkrit nyata hari ini yang spesifik nyambung dengan tema firman"
 }
 
 Judul Artikel: ${rawTitle}
 Konten Sumber:
-${rawContent.substring(0, 5000)}
+${rawContent.substring(0, 4500)}
 `;
 
-  // 1. Try Groq API first (Llama-3.3-70b-versatile or configured model)
+  // 1. Try Groq API first
   const groqKey = process.env.GROQ_API_KEY || settings.groq_api_key;
-  const groqModel = settings.groq_model || 'llama-3.3-70b-versatile';
+  const preferredModel = settings.groq_model || 'openai/gpt-oss-120b';
 
   if (groqKey && groqKey.trim().length > 8 && !groqKey.includes('••••')) {
-    try {
-      const groqClient = new Groq({ apiKey: groqKey.trim() });
-      const completion = await groqClient.chat.completions.create({
-        model: groqModel,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Anda adalah sahabat rohani anak muda dan mahasiswa Katolik di MP Community. Kemas renungan dengan bahasa gaul, santai, hangat, dan sangat relatable bagi kehidupan perkuliahan dan anak muda saat ini, tanpa mengubah keaslian isi ayat firman Tuhan. Kembalikan data HANYA dalam format JSON valid.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.4,
-      });
+    const candidateModels = Array.from(
+      new Set([preferredModel, 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'])
+    ).filter(Boolean);
 
-      const jsonText = completion.choices[0]?.message?.content;
-      if (jsonText) {
-        const parsed = JSON.parse(jsonText);
-        if (
-          parsed.verse_reference &&
-          parsed.verse_text &&
-          parsed.reflection &&
-          parsed.mind_check &&
-          parsed.take_one_step
-        ) {
-          const saintName = parsed.saint_commemoration || '';
-          const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
-          const finalRef = formatVerseReference(exactRef);
-          const formatted = formatCoffeeBreakTemplate(
-            finalRef,
-            parsed.verse_text,
-            parsed.reflection,
-            parsed.mind_check,
-            parsed.take_one_step,
-            saintName
-          );
+    const groqClient = new Groq({ apiKey: groqKey.trim() });
 
-          return {
-            success: true,
-            saint_commemoration: saintName,
-            verse_reference: finalRef,
-            verse_text: parsed.verse_text,
-            reflection: parsed.reflection,
-            mind_check: parsed.mind_check,
-            take_one_step: parsed.take_one_step,
-            formatted_message: formatted,
-            is_fallback_eligible: true,
-          };
+    for (const modelToTry of candidateModels) {
+      try {
+        const completion = await groqClient.chat.completions.create({
+          model: modelToTry,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Anda adalah sahabat rohani anak muda dan mahasiswa Katolik di MP Community. Kemas renungan dengan bahasa gaul, santai, hangat, dan sangat relatable bagi kehidupan perkuliahan dan anak muda saat ini, tanpa mengubah keaslian isi ayat firman Tuhan. Kembalikan data HANYA dalam format JSON valid.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.4,
+        });
+
+        const jsonText = completion.choices[0]?.message?.content;
+        if (jsonText) {
+          const parsed = JSON.parse(jsonText);
+          if (
+            parsed.verse_reference &&
+            parsed.verse_text &&
+            parsed.reflection &&
+            parsed.mind_check &&
+            parsed.take_one_step
+          ) {
+            const saintName = parsed.saint_commemoration || '';
+            const exactRef = await resolveExactVerse(parsed.verse_text, parsed.verse_reference);
+            const finalRef = formatVerseReference(exactRef);
+            const formatted = formatCoffeeBreakTemplate(
+              finalRef,
+              parsed.verse_text,
+              parsed.reflection,
+              parsed.mind_check,
+              parsed.take_one_step,
+              saintName
+            );
+
+            console.log(`[LLM GROQ SUCCESS] Date: ${targetDate} processed via Groq model: ${modelToTry}`);
+            return {
+              success: true,
+              saint_commemoration: saintName,
+              verse_reference: finalRef,
+              verse_text: parsed.verse_text,
+              reflection: parsed.reflection,
+              mind_check: parsed.mind_check,
+              take_one_step: parsed.take_one_step,
+              formatted_message: formatted,
+              is_fallback_eligible: true,
+            };
+          }
         }
+      } catch (modelErr: any) {
+        console.warn(`[LLM GROQ] Notice on model ${modelToTry}:`, modelErr.message);
       }
-    } catch (groqErr: any) {
-      console.warn('[LLM GROQ API] Groq processing error, attempting Gemini/extractor:', groqErr.message);
     }
   }
 
