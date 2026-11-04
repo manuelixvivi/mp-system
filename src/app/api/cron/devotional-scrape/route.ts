@@ -54,7 +54,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized cron trigger' }, { status: 401 });
     }
 
-    const result = await runDevotionalScrapeJob();
+    let targetDate: Date = new Date();
+    const { searchParams } = new URL(req.url);
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      targetDate = new Date(dateParam);
+    } else {
+      try {
+        const body = await req.json().catch(() => null);
+        if (body?.date) {
+          targetDate = new Date(body.date);
+        }
+      } catch {}
+    }
+
+    const result = await runDevotionalScrapeJob(targetDate);
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
