@@ -223,6 +223,12 @@ export default function DevotionalAuditPage() {
                 <span>{actionLoading ? 'Menjalankan Scraping...' : 'Jalankan Scraping Sekarang'}</span>
               </button>
               <Link
+                href="/dashboard/devotionals/calendar"
+                className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-semibold transition-colors"
+              >
+                Kalender Renungan
+              </Link>
+              <Link
                 href="/dashboard/devotionals"
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
               >
@@ -277,6 +283,12 @@ ${takeOneStep}
 
         {/* Current Status Badge */}
         <div className="flex items-center space-x-3">
+          <Link
+            href="/dashboard/devotionals/calendar"
+            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-semibold transition-colors"
+          >
+            Kalender Renungan
+          </Link>
           <div className="text-right">
             <span className="text-[10px] text-slate-400 block uppercase font-medium">Status Saat Ini</span>
             <span

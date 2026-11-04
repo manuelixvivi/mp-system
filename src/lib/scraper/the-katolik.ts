@@ -36,15 +36,82 @@ export interface ScrapedResult {
   error?: string;
 }
 
+export interface AvailableDevotionalEntry {
+  isoDate: string; // YYYY-MM-DD
+  url: string;
+  title: string;
+}
+
+/**
+ * Retrieves all available daily devotional posts currently published on The Katolik
+ * (Usually covers today and several future days ahead)
+ */
+export async function getAvailableTheKatolikEntries(): Promise<AvailableDevotionalEntry[]> {
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    Accept: 'application/json, text/html, */*',
+  };
+
+  try {
+    const feedUrl = `https://www.thekatolik.com/feeds/posts/default/-/Renungan%20harian?alt=json&max-results=35`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const feedRes = await fetch(feedUrl, { signal: controller.signal, headers });
+    clearTimeout(timeout);
+
+    if (!feedRes.ok) return [];
+
+    const feedData = await feedRes.json();
+    const entries = feedData.feed?.entry || [];
+    const list: AvailableDevotionalEntry[] = [];
+
+    for (const entry of entries) {
+      const altLink = entry.link?.find((l: any) => l.rel === 'alternate');
+      const href = altLink?.href || '';
+      const title = entry.title?.$t?.trim() || '';
+
+      const m = href.match(/renungan-harian-katolik-(\d+)-([a-z]+)-(\d{4})/i);
+      if (m) {
+        const day = parseInt(m[1], 10);
+        const monthStr = m[2].toLowerCase();
+        const mIdx = INDONESIAN_MONTHS.indexOf(monthStr) + 1;
+        const year = parseInt(m[3], 10);
+
+        if (mIdx > 0 && day > 0 && day <= 31 && year >= 2024) {
+          const isoDate = `${year}-${String(mIdx).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          list.push({
+            isoDate,
+            url: href.trim(),
+            title: title || `Renungan Harian Katolik ${day} ${monthStr} ${year}`,
+          });
+        }
+      }
+    }
+
+    // Sort ascending by date
+    list.sort((a, b) => a.isoDate.localeCompare(b.isoDate));
+    return list;
+  } catch (err: any) {
+    console.warn('[SCRAPER] Error fetching available feed entries:', err.message);
+    return [];
+  }
+}
+
 /**
  * Scrapes daily Catholic devotional from thekatolik.com using Blogger JSON feed and permalink resolver
  */
-export async function scrapeTheKatolikDevotional(targetDate: Date = new Date()): Promise<ScrapedResult> {
+export async function scrapeTheKatolikDevotional(
+  targetDate: Date = new Date(),
+  overrideUrl?: string,
+  overrideTitle?: string
+): Promise<ScrapedResult> {
   const { year, month, day, isoDate: dateIso } = getWibParts(targetDate);
   const monthName = INDONESIAN_MONTHS[month - 1];
 
-  let resolvedUrl = '';
-  let resolvedTitle = '';
+  let resolvedUrl = overrideUrl || '';
+  let resolvedTitle = overrideTitle || '';
 
   const headers = {
     'User-Agent':
@@ -52,7 +119,9 @@ export async function scrapeTheKatolikDevotional(targetDate: Date = new Date()):
     Accept: 'application/json, text/html, */*',
   };
 
-  // --- STAGE 1: Feed lookup from official Blogger JSON feed ---
+  // Skip feed search if URL was already provided
+  if (!resolvedUrl) {
+    // --- STAGE 1: Feed lookup from official Blogger JSON feed ---
   try {
     const feedUrl = `https://www.thekatolik.com/feeds/posts/default/-/Renungan%20harian?alt=json&max-results=35`;
     const controller = new AbortController();
@@ -144,6 +213,7 @@ export async function scrapeTheKatolikDevotional(targetDate: Date = new Date()):
       } catch {}
     }
   }
+}
 
   // Fallback default URL if completely unreachable
   const finalUrl = resolvedUrl || buildTheKatolikUrl(targetDate);

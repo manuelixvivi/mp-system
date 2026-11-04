@@ -11,7 +11,7 @@ import {
   addActivityLog,
   addNotification,
 } from '../db/store';
-import { scrapeTheKatolikDevotional } from '../scraper/the-katolik';
+import { scrapeTheKatolikDevotional, getAvailableTheKatolikEntries } from '../scraper/the-katolik';
 import { processDevotionalWithLLM } from '../llm/gemini';
 import { LineApiClient } from '../line/client';
 import { getWibParts, getWibIsoDate } from '../time';
@@ -139,6 +139,147 @@ export async function runDevotionalScrapeJob(
   } catch (err: any) {
     return { job: 'devotional_scrape', success: false, message: err.message };
   }
+}
+
+export interface MultiDayScrapeResult {
+  job: string;
+  success: boolean;
+  message: string;
+  scrapedDates: string[];
+  skippedDates: string[];
+  failedDates: string[];
+  totalAvailable: number;
+}
+
+/**
+ * 1b. MULTI-DAY SCRAPING JOB:
+ * Scrapes today and all upcoming published devotional dates available on The Katolik
+ */
+export async function runMultiDayDevotionalScrapeJob(
+  baseDate: Date = new Date(),
+  force: boolean = false
+): Promise<MultiDayScrapeResult> {
+  const settings = await getAutomationSettings();
+  if (!settings.devotional_automation_active) {
+    return {
+      job: 'devotional_scrape_multiday',
+      success: false,
+      message: 'Otomatisasi renungan sedang dinonaktifkan di pengaturan sistem.',
+      scrapedDates: [],
+      skippedDates: [],
+      failedDates: [],
+      totalAvailable: 0,
+    };
+  }
+
+  const baseIso = getWibIsoDate(baseDate);
+  const availableEntries = await getAvailableTheKatolikEntries();
+
+  // Filter entries from base date onwards
+  const futureEntries = availableEntries.filter((e) => e.isoDate >= baseIso);
+
+  const scrapedDates: string[] = [];
+  const skippedDates: string[] = [];
+  const failedDates: string[] = [];
+
+  // Fallback if no future entries in Blogger feed
+  if (futureEntries.length === 0) {
+    const single = await runDevotionalScrapeJob(baseDate, force);
+    if (single.success) {
+      scrapedDates.push(baseIso);
+    } else if (single.details?.already_scraped) {
+      skippedDates.push(baseIso);
+    } else {
+      failedDates.push(baseIso);
+    }
+  } else {
+    for (const entry of futureEntries) {
+      const existing = await getDevotionalByDate(entry.isoDate);
+      if (existing && !force) {
+        skippedDates.push(entry.isoDate);
+        continue;
+      }
+
+      try {
+        const targetDateObj = new Date(entry.isoDate + 'T00:00:00Z');
+        const scrapeResult = await scrapeTheKatolikDevotional(targetDateObj, entry.url, entry.title);
+
+        if (!scrapeResult.success || !scrapeResult.rawContent) {
+          failedDates.push(entry.isoDate);
+          continue;
+        }
+
+        saveDevotionalSource({
+          id: `src_${entry.isoDate}`,
+          target_date: entry.isoDate,
+          source_url: scrapeResult.sourceUrl,
+          raw_title: scrapeResult.rawTitle,
+          raw_content: scrapeResult.rawContent,
+          scraping_status: 'success',
+          scraped_at: new Date().toISOString(),
+        });
+
+        const llmResult = await processDevotionalWithLLM(
+          scrapeResult.rawTitle || '',
+          scrapeResult.rawContent,
+          entry.isoDate
+        );
+
+        const devotionalId = existing?.id || randomUUID();
+        await saveDevotional({
+          id: devotionalId,
+          devotional_date: entry.isoDate,
+          source_id: `src_${entry.isoDate}`,
+          saint_commemoration: llmResult.saint_commemoration,
+          verse_reference: llmResult.verse_reference,
+          verse_text: llmResult.verse_text,
+          reflection: llmResult.reflection,
+          mind_check: llmResult.mind_check,
+          take_one_step: llmResult.take_one_step,
+          formatted_message: llmResult.formatted_message,
+          audit_status: existing?.audit_status || 'pending',
+          is_fallback_eligible: llmResult.is_fallback_eligible,
+          created_at: existing?.created_at || new Date().toISOString(),
+        });
+
+        addActivityLog({
+          actor_type: 'system_scheduler',
+          action: 'devotional_scraped_and_processed',
+          entity_type: 'devotional',
+          entity_id: devotionalId,
+          details: { verse: llmResult.verse_reference, date: entry.isoDate },
+        });
+
+        scrapedDates.push(entry.isoDate);
+      } catch (err: any) {
+        console.error(`[MULTI-DAY SCRAPE] Error processing ${entry.isoDate}:`, err.message);
+        failedDates.push(entry.isoDate);
+      }
+    }
+  }
+
+  const totalProcessed = scrapedDates.length;
+  let message = '';
+  if (totalProcessed > 0) {
+    message = `Multi-day scraping berhasil! ${totalProcessed} renungan berhasil discrape dan masuk ke kalender (${scrapedDates.join(', ')}).`;
+    if (skippedDates.length > 0) {
+      message += ` (${skippedDates.length} hari sudah tersedia sebelumnya).`;
+    }
+  } else if (skippedDates.length > 0) {
+    message = `Seluruh renungan (${skippedDates.length} hari ke depan: ${skippedDates[0]} s/d ${skippedDates[skippedDates.length - 1]}) sudah lengkap dan tersimpan di kalender.`;
+  } else {
+    message = `Tidak ada renungan baru yang berhasil discrape.`;
+  }
+
+  return {
+    job: 'devotional_scrape_multiday',
+    success: totalProcessed > 0 || skippedDates.length > 0,
+    message,
+    scrapedDates,
+    skippedDates,
+    failedDates,
+    totalAvailable: futureEntries.length,
+  };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runDevotionalScrapeJob } from '@/lib/scheduler/runner';
+import { runDevotionalScrapeJob, runMultiDayDevotionalScrapeJob } from '@/lib/scheduler/runner';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
 import { getProfileByEmail } from '@/lib/db/store';
 
@@ -69,7 +69,16 @@ export async function POST(req: NextRequest) {
     }
 
     const force = searchParams.get('force') === 'true';
-    const result = await runDevotionalScrapeJob(targetDate, force);
+    const mode = searchParams.get('mode');
+
+    // If a specific date is passed and mode is not explicitly multiday, run single date scrape
+    if (dateParam && mode !== 'multiday') {
+      const result = await runDevotionalScrapeJob(targetDate, force);
+      return NextResponse.json(result);
+    }
+
+    // Default: Multi-day scraping (scrape today and all available upcoming days from The Katolik)
+    const result = await runMultiDayDevotionalScrapeJob(targetDate, force);
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

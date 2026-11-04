@@ -6,6 +6,7 @@ import { useRole } from '@/context/RoleContext';
 import { Devotional } from '@/types';
 import {
   BookOpen,
+  Calendar,
   Sparkles,
   RefreshCw,
   CheckCircle2,
@@ -84,6 +85,13 @@ export default function DevotionalManagementPage() {
               <span>{scraping ? 'Menjalankan Scraping...' : 'Jalankan Scraping Sekarang'}</span>
             </button>
           )}
+          <Link
+            href="/dashboard/devotionals/calendar"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-semibold shadow-sm transition-all"
+          >
+            <Calendar className="w-3.5 h-3.5 text-amber-700" />
+            <span>Buka Kalender Renungan</span>
+          </Link>
           <Link
             href="/dashboard/devotionals/audit"
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"

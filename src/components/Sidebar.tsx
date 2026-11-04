@@ -47,6 +47,12 @@ export default function Sidebar() {
           roles: ['superadmin', 'liturgi'],
         },
         {
+          label: 'Kalender Renungan',
+          href: '/dashboard/devotionals/calendar',
+          icon: Calendar,
+          roles: ['superadmin', 'liturgi'],
+        },
+        {
           label: 'Audit & Revisi Liturgi',
           href: '/dashboard/devotionals/audit',
           icon: CheckSquare,
