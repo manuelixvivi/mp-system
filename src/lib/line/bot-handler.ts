@@ -301,7 +301,7 @@ export async function handleLineWebhookEvent(event: any) {
   if (
     lowerText.includes('registrasi') &&
     !lowerText.includes('registrasi_akun') &&
-    (rawText.startsWith('?') || rawText.startsWith('/') || rawText.startsWith('#'))
+    (rawText.startsWith('?') || rawText.startsWith('/') || rawText.startsWith('#') || lowerText.startsWith('registrasi'))
   ) {
     // 1. Prevent Double Registration: check if this LINE User ID is already verified
     if (existingMember && existingMember.line_verification_status === 'verified') {
@@ -368,7 +368,12 @@ export async function handleLineWebhookEvent(event: any) {
   // ==========================================
   // B. CONFIRMATION / CANCELLATION OF REGISTRATION
   // ==========================================
-  if (lowerText === '/konfirmasi_reg' || lowerText === '?konfirmasi_reg' || lowerText === '#konfirmasi_reg') {
+  if (
+    lowerText === '/konfirmasi_reg' ||
+    lowerText === '?konfirmasi_reg' ||
+    lowerText === '#konfirmasi_reg' ||
+    lowerText === 'konfirmasi_reg'
+  ) {
     const pending = pendingMemberRegistrations.get(lineUserId);
     if (!pending || !pending.photoUrl) {
       return await sendReply(
@@ -430,7 +435,12 @@ export async function handleLineWebhookEvent(event: any) {
     return await sendReply(welcomeMsg);
   }
 
-  if (lowerText === '/batal_reg' || lowerText === '?batal_reg' || lowerText === '#batal_reg') {
+  if (
+    lowerText === '/batal_reg' ||
+    lowerText === '?batal_reg' ||
+    lowerText === '#batal_reg' ||
+    lowerText === 'batal_reg'
+  ) {
     pendingMemberRegistrations.delete(lineUserId);
     return await sendReply('❌ Pendaftaran dibatalkan. Anda dapat mengirimkan ulang format ?registrasi kapan saja.');
   }

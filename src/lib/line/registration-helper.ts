@@ -53,7 +53,11 @@ const MONTH_MAP: Record<string, number> = {
 };
 
 export function parseRegistrationText(rawText: string): ParsedMemberData | null {
-  if (!rawText.toLowerCase().includes('/registrasi')) {
+  const lower = rawText.toLowerCase();
+
+  // Must contain 'registrasi' and not be staff token activation 'registrasi_akun'
+  // Supports ?registrasi, /registrasi, #registrasi, or plain registrasi
+  if (!lower.includes('registrasi') || lower.includes('registrasi_akun')) {
     return null;
   }
 
@@ -70,7 +74,9 @@ export function parseRegistrationText(rawText: string): ParsedMemberData | null 
   let birthYear: number | undefined;
   let whatsapp = '';
 
-  for (const line of lines) {
+  for (const rawLine of lines) {
+    // Normalize Asian/Japanese fullwidth colon '：' to standard ':'
+    const line = rawLine.replace(/：/g, ':');
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
 
