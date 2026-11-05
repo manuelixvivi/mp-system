@@ -279,7 +279,7 @@ export async function handleLineWebhookEvent(event: any) {
       expiresAt: Date.now() + 1800000, // 30 minutes
     });
 
-    const reply = `📋 DATA PENDAFTARAN DICATAT!\n\nHalo ${matchedCandidate.full_name}! Data kamu berhasil dicocokkan dengan daftar calon anggota MP Community (${matchedCandidate.class_origin || parsed.classOrigin || 'Komunitas'}).\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto/foto formal) di obrolan ini sebagai lampiran profil keanggotaan.\n\nFoto Anda akan diunggah aman dalam kualitas Full HD (asli tanpa kompresi) ke Cloudinary MP Community.`;
+    const reply = `📋 DATA PENDAFTARAN DICATAT!\n\nHalo ${matchedCandidate.full_name}! Data kamu berhasil dicocokkan dengan daftar calon anggota MP Community (${matchedCandidate.class_origin || parsed.classOrigin || 'Komunitas'}).\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto/foto formal) di obrolan ini.\n\n✨ TIPS PENTING AGAR FOTO TIDAK BLUR / PECAH:\nSaat memilih foto di galeri LINE, tekan/centang tombol "ORIGINAL" (atau "ASLI") di pojok kiri bawah layar sebelum menekan tombol Kirim. Foto akan tersimpan dalam kualitas Full HD tanpa kompresi otomatis LINE.`;
     return await sendReply(reply);
   }
 
