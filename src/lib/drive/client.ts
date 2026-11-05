@@ -2,24 +2,63 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
+import { supabase, isSupabaseConfigured } from '../db/supabase';
 
 /**
- * Google Drive API Client for MP Control System
- * Supports Service Account auth and graceful fallback to local public storage
+ * Photo Storage Service for MP Control System
+ * Priority order:
+ * 1. Supabase Storage (Zero extra setup, uses existing database credentials)
+ * 2. Google Drive API (If Service Account credentials are provided)
+ * 3. Local public storage (/public/uploads/members/)
  */
 export async function uploadPhotoToDriveOrLocal(
   fileName: string,
   mimeType: string,
   buffer: Buffer
-): Promise<{ fileId: string; url: string; source: 'google_drive' | 'local_storage' }> {
+): Promise<{ fileId: string; url: string; source: 'supabase_storage' | 'google_drive' | 'local_storage' }> {
+  const safeName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+  // 1. PRIMARY & EASIEST: Supabase Storage (Bucket: member-photos)
+  // No extra Google Cloud accounts, JSON keys, or IAM permissions required!
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const storagePath = `members/${safeName}`;
+
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('member-photos')
+        .upload(storagePath, buffer, {
+          contentType: mimeType || 'image/jpeg',
+          upsert: true,
+        });
+
+      if (!uploadErr && uploadData) {
+        const { data: urlData } = supabase.storage
+          .from('member-photos')
+          .getPublicUrl(storagePath);
+
+        if (urlData?.publicUrl) {
+          console.log(`[SUPABASE STORAGE SUCCESS] Uploaded ${fileName} -> ${urlData.publicUrl}`);
+          return {
+            fileId: storagePath,
+            url: urlData.publicUrl,
+            source: 'supabase_storage',
+          };
+        }
+      } else if (uploadErr) {
+        console.warn('[SUPABASE STORAGE WARNING] Upload error, trying next provider:', uploadErr.message);
+      }
+    } catch (supaErr: any) {
+      console.warn('[SUPABASE STORAGE EXCEPTION]:', supaErr.message);
+    }
+  }
+
+  // 2. ALTERNATIVE: Google Drive API (if user configured Service Account)
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
   let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || process.env.GOOGLE_PRIVATE_KEY;
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
-  // 1. Try Google Drive API if credentials are provided
   if (clientEmail && privateKey) {
     try {
-      // Fix multiline private key formatting if passed as flat string with \n
       if (privateKey.includes('\\n')) {
         privateKey = privateKey.replace(/\\n/g, '\n');
       }
@@ -55,7 +94,6 @@ export async function uploadPhotoToDriveOrLocal(
 
       const fileId = response.data.id;
       if (fileId) {
-        // Make file publicly readable so LINE Flex Message can render it as image
         try {
           await drive.permissions.create({
             fileId: fileId,
@@ -81,14 +119,13 @@ export async function uploadPhotoToDriveOrLocal(
     }
   }
 
-  // 2. Reliable Fallback: Save to public uploads directory
+  // 3. FALLBACK: Save to public uploads directory
   try {
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'members');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const safeName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const filePath = path.join(uploadDir, safeName);
     fs.writeFileSync(filePath, buffer);
 
@@ -104,7 +141,6 @@ export async function uploadPhotoToDriveOrLocal(
     };
   } catch (fsErr: any) {
     console.error('[LOCAL STORAGE SAVE ERROR]:', fsErr.message);
-    // Return placeholder if disk write fails
     return {
       fileId: 'fallback',
       url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop',
