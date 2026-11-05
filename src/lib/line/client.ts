@@ -386,6 +386,180 @@ export class LineApiClient {
   }
 
   /**
+   * Interactive Profile Card for Active Members
+   * Shows photo, biodata, with action buttons to Update Biodata & Change Photo
+   */
+  static buildMemberProfileFlex(member: {
+    fullName: string;
+    baptismalName?: string;
+    lineId?: string;
+    instagram?: string;
+    classOrigin?: string;
+    entryYear?: number;
+    birthDate: number;
+    birthMonth: number;
+    birthYear?: number;
+    whatsapp?: string;
+    photoUrl?: string;
+    role?: string;
+  }) {
+    const monthNames = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    const monthStr = monthNames[(member.birthMonth || 1) - 1] || `${member.birthMonth}`;
+    const birthStr = `${member.birthDate} ${monthStr} ${member.birthYear || ''}`.trim();
+
+    const infoRows = [
+      { label: '👤 Nama Lengkap', value: member.fullName },
+      { label: '🕊️ Nama Baptis', value: member.baptismalName || '-' },
+      { label: '🏫 Kelas / Angkatan', value: `${member.classOrigin || '-'}${member.entryYear ? ` (${member.entryYear})` : ''}` },
+      { label: '🎂 Tanggal Lahir', value: birthStr },
+      { label: '💬 ID LINE', value: member.lineId || '-' },
+      { label: '📸 Instagram', value: member.instagram ? `@${member.instagram.replace(/^@/, '')}` : '-' },
+      { label: '📱 WhatsApp', value: member.whatsapp || '-' },
+    ];
+
+    const bodyContents: any[] = [
+      {
+        type: 'text',
+        text: member.fullName,
+        weight: 'bold',
+        size: 'lg',
+        color: '#111827',
+      },
+      {
+        type: 'text',
+        text: member.role && member.role !== 'anggota_aktif' ? `Pengurus (${member.role})` : 'Anggota Aktif MP Community',
+        size: 'xs',
+        color: '#059669',
+        weight: 'bold',
+        margin: 'xs',
+      },
+      {
+        type: 'separator',
+        margin: 'md',
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        margin: 'md',
+        spacing: 'sm',
+        contents: infoRows.map((r) => ({
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: r.label,
+              size: 'xs',
+              color: '#4B5563',
+              flex: 4,
+            },
+            {
+              type: 'text',
+              text: r.value,
+              size: 'xs',
+              color: '#111827',
+              weight: 'bold',
+              flex: 6,
+              wrap: true,
+            },
+          ],
+        })),
+      },
+    ];
+
+    const bubble: any = {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#065F46',
+        paddingAll: 'lg',
+        contents: [
+          {
+            type: 'text',
+            text: '👤 PROFIL ANGGOTA MP COMMUNITY',
+            weight: 'bold',
+            color: '#FFFFFF',
+            size: 'sm',
+          },
+          {
+            type: 'text',
+            text: 'Status: Terverifikasi & Aktif',
+            color: '#A7F3D0',
+            size: 'xs',
+            margin: 'xs',
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: 'lg',
+        contents: bodyContents,
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        paddingAll: 'lg',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#059669',
+            height: 'sm',
+            action: {
+              type: 'message',
+              label: '📝 Ubah Biodata',
+              text: 'ubah_biodata',
+            },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            height: 'sm',
+            action: {
+              type: 'message',
+              label: '📸 Ganti Foto Profil',
+              text: 'ganti_foto',
+            },
+          },
+        ],
+      },
+    };
+
+    if (member.photoUrl) {
+      bubble.hero = {
+        type: 'image',
+        url: member.photoUrl,
+        size: 'full',
+        aspectRatio: '1:1',
+        aspectMode: 'cover',
+      };
+    }
+
+    return {
+      type: 'flex',
+      altText: `Profil Anggota: ${member.fullName}`,
+      contents: bubble,
+    };
+  }
+
+  /**
    * Format Birthday Message with Native LINE Mention (textV2 API) or Text Fallback
    * PRD Requirement: Max 20 mentions per batch, no teddy bears.
    */

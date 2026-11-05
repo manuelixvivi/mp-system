@@ -34,6 +34,8 @@ import {
   Download,
   CheckCircle2,
   RefreshCw,
+  Pencil,
+  Camera,
 } from 'lucide-react';
 import { parseMemberExcelBuffer } from '@/lib/excel/member-parser';
 
@@ -137,6 +139,116 @@ export default function BirthdayManagementPage() {
   const [selectedGroup, setSelectedGroup] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Member Modal State
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editBaptismalName, setEditBaptismalName] = useState('');
+  const [editBirthDate, setEditBirthDate] = useState('1');
+  const [editBirthMonth, setEditBirthMonth] = useState('1');
+  const [editBirthYear, setEditBirthYear] = useState('');
+  const [editClassOrigin, setEditClassOrigin] = useState('');
+  const [editEntryYear, setEditEntryYear] = useState('');
+  const [editLineId, setEditLineId] = useState('');
+  const [editLineUserId, setEditLineUserId] = useState('');
+  const [editInstagram, setEditInstagram] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editRole, setEditRole] = useState<MemberCommunityRole>('anggota_aktif');
+  const [editPhotoUrl, setEditPhotoUrl] = useState('');
+  const [editUploadingPhoto, setEditUploadingPhoto] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (editingMember) {
+      setEditFullName(editingMember.full_name || '');
+      setEditBaptismalName(editingMember.baptismal_name || '');
+      setEditBirthDate(String(editingMember.birth_date || 1));
+      setEditBirthMonth(String(editingMember.birth_month || 1));
+      setEditBirthYear(editingMember.birth_year ? String(editingMember.birth_year) : '');
+      setEditClassOrigin(editingMember.class_origin || '');
+      setEditEntryYear(editingMember.entry_year ? String(editingMember.entry_year) : '');
+      setEditLineId(editingMember.line_id || '');
+      setEditLineUserId(editingMember.line_user_id || '');
+      setEditInstagram(editingMember.instagram_account || '');
+      setEditWhatsapp(editingMember.whatsapp_number || '');
+      setEditRole(editingMember.community_role || 'anggota_aktif');
+      setEditPhotoUrl(editingMember.photo_url || '');
+    }
+  }, [editingMember]);
+
+  const handleEditPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingMember) return;
+
+    setEditUploadingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('full_name', editFullName || editingMember.full_name);
+      fd.append('class_origin', editClassOrigin || editingMember.class_origin || 'Umum');
+      fd.append('member_id', editingMember.id);
+
+      const res = await fetch('/api/members/upload-photo', {
+        method: 'POST',
+        body: fd,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengunggah foto');
+      }
+
+      setEditPhotoUrl(data.url);
+      setActionMessage({
+        type: 'success',
+        text: `Foto berhasil diunggah ke Cloudinary sebagai "${data.public_id}"!`,
+      });
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err.message || 'Gagal mengunggah foto' });
+    } finally {
+      setEditUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+
+    setEditSubmitting(true);
+    try {
+      const res = await fetch('/api/members', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingMember.id,
+          full_name: editFullName.trim(),
+          baptismal_name: editBaptismalName.trim() || undefined,
+          birth_date: Number(editBirthDate),
+          birth_month: Number(editBirthMonth),
+          birth_year: editBirthYear ? Number(editBirthYear) : undefined,
+          class_origin: editClassOrigin.trim() || undefined,
+          entry_year: editEntryYear ? Number(editEntryYear) : undefined,
+          line_id: editLineId.trim() || undefined,
+          line_user_id: editLineUserId.trim() || undefined,
+          instagram_account: editInstagram.trim() || undefined,
+          whatsapp_number: editWhatsapp.trim() || undefined,
+          community_role: editRole,
+          photo_url: editPhotoUrl || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menyimpan perubahan');
+
+      setActionMessage({ type: 'success', text: `Biodata ${editFullName} berhasil diperbarui!` });
+      setEditingMember(null);
+      loadData();
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err.message || 'Gagal menyimpan' });
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
 
   // Excel Upload States
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -914,6 +1026,15 @@ export default function BirthdayManagementPage() {
                           </button>
                           {(currentRole === 'superadmin' || currentRole === 'logistik') && (
                             <button
+                              onClick={() => setEditingMember(member)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit Biodata & Foto"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
+                          {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                            <button
                               onClick={() => handleQuickSelectAndDelete(member.id)}
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Hapus Anggota Ini"
@@ -1141,17 +1262,31 @@ export default function BirthdayManagementPage() {
             </div>
 
             <div className="mt-5 flex justify-between items-center text-xs">
-              {(currentRole === 'superadmin' || currentRole === 'logistik') && (
-                <button
-                  onClick={() => {
-                    handleQuickSelectAndDelete(selectedStrip.id);
-                  }}
-                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-bold flex items-center space-x-1.5 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Hapus Anggota Ini</span>
-                </button>
-              )}
+              <div className="flex items-center space-x-2">
+                {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                  <button
+                    onClick={() => {
+                      setEditingMember(selectedStrip);
+                      setSelectedStrip(null);
+                    }}
+                    className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-bold flex items-center space-x-1.5 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit Biodata & Foto</span>
+                  </button>
+                )}
+                {(currentRole === 'superadmin' || currentRole === 'logistik') && (
+                  <button
+                    onClick={() => {
+                      handleQuickSelectAndDelete(selectedStrip.id);
+                    }}
+                    className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-bold flex items-center space-x-1.5 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Anggota</span>
+                  </button>
+                )}
+              </div>
 
               <button
                 onClick={() => setSelectedStrip(null)}
@@ -1160,6 +1295,248 @@ export default function BirthdayManagementPage() {
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MEMBER & PHOTO MODAL */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Pencil className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Edit Biodata & Foto Anggota</h3>
+                  <p className="text-[11px] text-slate-500">Pembaruan data & upload foto Full HD ke Cloudinary</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingMember(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditMember} className="mt-4 space-y-3.5 text-xs">
+              {/* Photo Upload Section */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center space-x-3.5">
+                {editPhotoUrl ? (
+                  <img
+                    src={editPhotoUrl}
+                    alt={editFullName}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-xs">
+                    No Foto
+                  </div>
+                )}
+                <div className="flex-1">
+                  <label className="block font-semibold text-slate-700 text-xs mb-1">
+                    Ganti Foto (Cloudinary HD)
+                  </label>
+                  <label className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:border-emerald-500 text-slate-700 rounded-lg cursor-pointer transition-colors text-xs font-medium">
+                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{editUploadingPhoto ? 'Mengunggah...' : 'Pilih Foto Baru'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={editUploadingPhoto}
+                      onChange={handleEditPhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Format nama di Cloudinary: <strong className="text-slate-600">&quot;{editFullName || 'Nama'} - {editClassOrigin || 'Kelas'}&quot;</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* Nama Lengkap & Nama Baptis */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nama Lengkap *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nama Baptis
+                  </label>
+                  <input
+                    type="text"
+                    value={editBaptismalName}
+                    onChange={(e) => setEditBaptismalName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Tanggal Lahir (D, M, Y) */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tanggal *</label>
+                  <select
+                    value={editBirthDate}
+                    onChange={(e) => setEditBirthDate(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none font-mono"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Bulan *</label>
+                  <select
+                    value={editBirthMonth}
+                    onChange={(e) => setEditBirthMonth(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none"
+                  >
+                    {MONTH_NAMES.slice(1).map((m, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tahun</label>
+                  <input
+                    type="number"
+                    value={editBirthYear}
+                    onChange={(e) => setEditBirthYear(e.target.value)}
+                    placeholder="Contoh: 2005"
+                    className="w-full px-2.5 py-2 border border-slate-300 rounded-lg focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Jabatan / Role Komunitas */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Jabatan / Role Komunitas
+                </label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as MemberCommunityRole)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {COMMUNITY_ROLES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Asal Kelas & Tahun Masuk */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Asal Kelas *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editClassOrigin}
+                    onChange={(e) => setEditClassOrigin(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Tahun Masuk / Angkatan
+                  </label>
+                  <input
+                    type="number"
+                    value={editEntryYear}
+                    onChange={(e) => setEditEntryYear(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* LINE ID & LINE User ID */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    ID LINE
+                  </label>
+                  <input
+                    type="text"
+                    value={editLineId}
+                    onChange={(e) => setEditLineId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    LINE User ID (Uxxx)
+                  </label>
+                  <input
+                    type="text"
+                    value={editLineUserId}
+                    onChange={(e) => setEditLineUserId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Instagram & WhatsApp */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Akun Instagram
+                  </label>
+                  <input
+                    type="text"
+                    value={editInstagram}
+                    onChange={(e) => setEditInstagram(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nomor WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={editWhatsapp}
+                    onChange={(e) => setEditWhatsapp(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting || editUploadingPhoto}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-bold transition-colors shadow-sm"
+                >
+                  {editSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

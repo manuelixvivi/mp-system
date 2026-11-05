@@ -19,9 +19,28 @@ if (process.env.CLOUDINARY_URL) {
 export async function uploadPhotoToDriveOrLocal(
   fileName: string,
   mimeType: string,
-  buffer: Buffer
+  buffer: Buffer,
+  options?: {
+    customPublicId?: string; // e.g. "Nama - Kelas"
+    folder?: string;
+  }
 ): Promise<{ fileId: string; url: string; source: 'cloudinary' | 'supabase_storage' | 'google_drive' | 'local_storage' }> {
-  const safeName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  // Determine target name (e.g. "Nama - Kelas")
+  let targetPublicId = options?.customPublicId?.trim();
+  if (!targetPublicId) {
+    const baseWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+    if (baseWithoutExt.includes(' - ')) {
+      targetPublicId = baseWithoutExt.trim();
+    }
+  }
+
+  if (targetPublicId) {
+    targetPublicId = targetPublicId.replace(/[/\\?%*:|"<>]/g, '').trim();
+  }
+
+  const safeName = targetPublicId
+    ? `${targetPublicId}.${mimeType.includes('png') ? 'png' : 'jpg'}`
+    : `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
   // 1. TOP PRIORITY: Cloudinary (Full HD, Uncompressed, Generous Quota)
   const cloudinaryUrl = process.env.CLOUDINARY_URL;
@@ -42,12 +61,15 @@ export async function uploadPhotoToDriveOrLocal(
       const uploadResult = await new Promise<any>((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
           {
-            folder: 'mp_community/members',
+            folder: options?.folder || 'mp_community/members',
+            public_id: targetPublicId || undefined,
+            use_filename: Boolean(targetPublicId),
+            unique_filename: !targetPublicId,
+            overwrite: true,
             resource_type: 'image',
             timestamp: epochSeconds,
             // Keep full original quality (no compression, no blur, no downscale)
             quality: 100,
-            unique_filename: true,
           },
           (err, res) => {
             if (err) reject(err);
@@ -58,7 +80,7 @@ export async function uploadPhotoToDriveOrLocal(
       });
 
       if (uploadResult?.secure_url) {
-        console.log(`[CLOUDINARY FULL HD SUCCESS] Uploaded ${fileName} -> ${uploadResult.secure_url}`);
+        console.log(`[CLOUDINARY FULL HD SUCCESS] Uploaded (${targetPublicId || fileName}) -> ${uploadResult.secure_url}`);
         return {
           fileId: uploadResult.public_id,
           url: uploadResult.secure_url,

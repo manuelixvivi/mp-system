@@ -52,6 +52,16 @@ interface PendingMemberRegistration {
 
 const pendingMemberRegistrations = new Map<string, PendingMemberRegistration>();
 
+// Pending photo update store for active members
+interface PendingPhotoUpdate {
+  memberId: string;
+  fullName: string;
+  classOrigin?: string;
+  expiresAt: number;
+}
+
+const pendingPhotoUpdates = new Map<string, PendingPhotoUpdate>();
+
 /**
  * Main Webhook Event Router for LINE Messaging API
  */
@@ -126,75 +136,6 @@ export async function handleLineWebhookEvent(event: any) {
   const lineUserId = event.source.userId;
   const replyToken = event.replyToken;
 
-  // 1. Handle Image Upload (during registration)
-  if (event.message?.type === 'image') {
-    const pending = pendingMemberRegistrations.get(lineUserId);
-    if (!pending) {
-      if (replyToken) {
-        await lineClient.replyMessage(replyToken, [
-          {
-            type: 'text',
-            text: '📸 Foto Anda diterima. Untuk melakukan pendaftaran anggota baru, silakan kirim data diri Anda terlebih dahulu dengan format ?registrasi.',
-          },
-        ]);
-      }
-      return { status: 'ignored_unregistered_image' };
-    }
-
-    const imageBuffer = await lineClient.getMessageContent(event.message.id);
-    if (!imageBuffer) {
-      if (replyToken) {
-        await lineClient.replyMessage(replyToken, [
-          {
-            type: 'text',
-            text: '⚠️ Maaf, gagal mengunduh foto dari server LINE. Silakan coba kirim ulang foto Anda.',
-          },
-        ]);
-      }
-      return { status: 'image_download_failed' };
-    }
-
-    // Upload to Cloudinary in Full HD (Uncompressed, No Blur)
-    const uploadResult = await uploadPhotoToDriveOrLocal(
-      `member_${lineUserId}_${Date.now()}.jpg`,
-      'image/jpeg',
-      imageBuffer
-    );
-
-    pending.photoUrl = uploadResult.url;
-    pending.step = 'awaiting_confirmation';
-    pendingMemberRegistrations.set(lineUserId, pending);
-
-    // Send LINE Flex Message Confirmation Card
-    const flexMessage = LineApiClient.buildRegistrationConfirmationFlex({
-      fullName: pending.fullName,
-      baptismalName: pending.baptismalName,
-      lineId: pending.lineId,
-      instagram: pending.instagram,
-      classOrigin: pending.classOrigin,
-      entryYear: pending.entryYear,
-      birthDate: pending.birthDate,
-      birthMonth: pending.birthMonth,
-      birthYear: pending.birthYear,
-      whatsapp: pending.whatsapp,
-      photoUrl: uploadResult.url,
-    });
-
-    if (replyToken) {
-      await lineClient.replyMessage(replyToken, [flexMessage]);
-    }
-
-    return { status: 'sent_registration_confirmation_flex', lineUserId, photoUrl: uploadResult.url };
-  }
-
-  // Text message processing
-  if (event.message?.type !== 'text') {
-    return { status: 'ignored_non_text_message' };
-  }
-
-  const rawText = (event.message.text || '').trim();
-  const lowerText = rawText.toLowerCase();
-
   // Helper response
   const sendReply = async (text: string) => {
     if (replyToken) {
@@ -213,6 +154,117 @@ export async function handleLineWebhookEvent(event: any) {
     Boolean(userProfile && userProfile.is_active) ||
     Boolean(existingMember && existingMember.community_role && existingMember.community_role !== 'anggota_aktif');
 
+  // 1. Handle Image Upload (Registration or Photo Update for Active Members)
+  if (event.message?.type === 'image') {
+    const pendingReg = pendingMemberRegistrations.get(lineUserId);
+    const pendingPhoto = pendingPhotoUpdates.get(lineUserId);
+    const isActiveMember = Boolean(existingMember && existingMember.status === 'active');
+
+    if (!pendingReg && !pendingPhoto && !isActiveMember) {
+      return await sendReply(
+        '📸 Foto Anda diterima. Untuk melakukan pendaftaran anggota baru, silakan kirim data diri Anda terlebih dahulu dengan format ?registrasi.'
+      );
+    }
+
+    const imageBuffer = await lineClient.getMessageContent(event.message.id);
+    if (!imageBuffer) {
+      return await sendReply(
+        '⚠️ Maaf, gagal mengunduh foto dari server LINE. Silakan coba kirim ulang foto Anda.'
+      );
+    }
+
+    // CASE A: NEW MEMBER REGISTRATION (Saved as "Nama - Kelas")
+    if (pendingReg) {
+      const cleanName = pendingReg.fullName.trim().replace(/[/\\?%*:|"<>]/g, '');
+      const cleanClass = (pendingReg.classOrigin || 'Umum').trim().replace(/[/\\?%*:|"<>]/g, '');
+      const publicId = `${cleanName} - ${cleanClass}`;
+
+      const uploadResult = await uploadPhotoToDriveOrLocal(
+        `${publicId}.jpg`,
+        'image/jpeg',
+        imageBuffer,
+        { customPublicId: publicId }
+      );
+
+      pendingReg.photoUrl = uploadResult.url;
+      pendingReg.step = 'awaiting_confirmation';
+      pendingMemberRegistrations.set(lineUserId, pendingReg);
+
+      const flexMessage = LineApiClient.buildRegistrationConfirmationFlex({
+        fullName: pendingReg.fullName,
+        baptismalName: pendingReg.baptismalName,
+        lineId: pendingReg.lineId,
+        instagram: pendingReg.instagram,
+        classOrigin: pendingReg.classOrigin,
+        entryYear: pendingReg.entryYear,
+        birthDate: pendingReg.birthDate,
+        birthMonth: pendingReg.birthMonth,
+        birthYear: pendingReg.birthYear,
+        whatsapp: pendingReg.whatsapp,
+        photoUrl: uploadResult.url,
+      });
+
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, [flexMessage]);
+      }
+
+      return { status: 'sent_registration_confirmation_flex', lineUserId, photoUrl: uploadResult.url, publicId };
+    }
+
+    // CASE B: REGISTERED ACTIVE MEMBER UPDATING PHOTO (Saved as "Nama - Kelas")
+    if (existingMember && existingMember.status === 'active') {
+      const cleanName = existingMember.full_name.trim().replace(/[/\\?%*:|"<>]/g, '');
+      const cleanClass = (existingMember.class_origin || 'Umum').trim().replace(/[/\\?%*:|"<>]/g, '');
+      const publicId = `${cleanName} - ${cleanClass}`;
+
+      const uploadResult = await uploadPhotoToDriveOrLocal(
+        `${publicId}.jpg`,
+        'image/jpeg',
+        imageBuffer,
+        { customPublicId: publicId }
+      );
+
+      await updateMember(existingMember.id, { photo_url: uploadResult.url });
+      existingMember.photo_url = uploadResult.url;
+      pendingPhotoUpdates.delete(lineUserId);
+
+      const profileFlex = LineApiClient.buildMemberProfileFlex({
+        fullName: existingMember.full_name,
+        baptismalName: existingMember.baptismal_name,
+        lineId: existingMember.line_id,
+        instagram: existingMember.instagram_account,
+        classOrigin: existingMember.class_origin,
+        entryYear: existingMember.entry_year,
+        birthDate: existingMember.birth_date,
+        birthMonth: existingMember.birth_month,
+        birthYear: existingMember.birth_year,
+        whatsapp: existingMember.whatsapp_number,
+        photoUrl: uploadResult.url,
+        role: existingMember.community_role,
+      });
+
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, [
+          {
+            type: 'text',
+            text: `🎉 FOTO PROFIL BERHASIL DIPERBARUI!\n\nHalo ${existingMember.full_name}! Foto profil kamu telah berhasil disimpan di Cloudinary (Full HD) dengan format nama:\n"${publicId}".\n\nBerikut kartu profil terbarumu:`,
+          },
+          profileFlex,
+        ]);
+      }
+
+      return { status: 'member_photo_updated', memberId: existingMember.id, photoUrl: uploadResult.url, publicId };
+    }
+  }
+
+  // Text message processing
+  if (event.message?.type !== 'text') {
+    return { status: 'ignored_non_text_message' };
+  }
+
+  const rawText = (event.message.text || '').trim();
+  const lowerText = rawText.toLowerCase();
+
   // ==========================================
   // A. SELF-REGISTRATION COMMAND (?registrasi or /registrasi or #registrasi)
   // ==========================================
@@ -224,7 +276,7 @@ export async function handleLineWebhookEvent(event: any) {
     // 1. Prevent Double Registration: check if this LINE User ID is already verified
     if (existingMember && existingMember.line_verification_status === 'verified') {
       return await sendReply(
-        `Halo ${existingMember.full_name}! 👋✨\n\nAkun LINE kamu sudah terdaftar dan terverifikasi di sistem database MP Community.\n\n⚠️ Pendaftaran anggota hanya dapat dilakukan 1 kali. Jika ada pembaruan data (misal ganti nomor WhatsApp, foto, atau asal kelas), kamu bisa langsung menghubungi pengurus atau Superadmin ya. Terima kasih banyak! 😊🙏`
+        `Halo ${existingMember.full_name}! 👋✨\n\nAkun LINE kamu sudah terdaftar dan aktif di sistem database MP Community.\n\n💡 Ingin melihat atau mengubah data?\n• Ketik "profil" untuk melihat kartu profilmu\n• Ketik "ubah biodata" untuk memperbarui data diri\n• Ketik "ganti foto" untuk mengunggah foto profil baru (Full HD)\n\nTerima kasih banyak! 😊🙏`
       );
     }
 
@@ -395,10 +447,167 @@ export async function handleLineWebhookEvent(event: any) {
   }
 
   // ==========================================
-  // E. SECURITY PREFIX VALIDATION & COMMAND DISPATCH
+  // E. MEMBER PROFILE & BIODATA MANAGEMENT (FOR ACTIVE MEMBERS)
   // ==========================================
 
-  // E.1. OFFICER COMMANDS (MUST START WITH '#')
+  // E.1. VIEW PROFILE CARD (Triggers: profil, biodata, menu [if not officer], etc.)
+  const isProfileTrigger =
+    lowerText === 'profil' ||
+    lowerText === 'profile' ||
+    lowerText === '?profil' ||
+    lowerText === '#profil' ||
+    lowerText === 'biodata' ||
+    lowerText === '?biodata' ||
+    lowerText === 'lihat profil' ||
+    lowerText === 'cek profil' ||
+    (!isOfficer && (lowerText === 'menu' || lowerText === '?menu' || lowerText === '#menu'));
+
+  if (isProfileTrigger && existingMember && existingMember.status === 'active') {
+    const profileFlex = LineApiClient.buildMemberProfileFlex({
+      fullName: existingMember.full_name,
+      baptismalName: existingMember.baptismal_name,
+      lineId: existingMember.line_id,
+      instagram: existingMember.instagram_account,
+      classOrigin: existingMember.class_origin,
+      entryYear: existingMember.entry_year,
+      birthDate: existingMember.birth_date,
+      birthMonth: existingMember.birth_month,
+      birthYear: existingMember.birth_year,
+      whatsapp: existingMember.whatsapp_number,
+      photoUrl: existingMember.photo_url,
+      role: existingMember.community_role,
+    });
+
+    if (replyToken) {
+      await lineClient.replyMessage(replyToken, [profileFlex]);
+    }
+    return { status: 'sent_member_profile_menu', memberId: existingMember.id };
+  }
+
+  // E.2. GANTI FOTO PROFIL TRIGGER
+  if (
+    (lowerText === 'ganti_foto' ||
+      lowerText === 'ubah_foto' ||
+      lowerText === 'ganti foto' ||
+      lowerText === 'ubah foto' ||
+      lowerText === 'edit foto' ||
+      lowerText === '?ganti_foto' ||
+      lowerText === '#ganti_foto') &&
+    existingMember &&
+    existingMember.status === 'active'
+  ) {
+    pendingPhotoUpdates.set(lineUserId, {
+      memberId: existingMember.id,
+      fullName: existingMember.full_name,
+      classOrigin: existingMember.class_origin,
+      expiresAt: Date.now() + 1800000,
+    });
+
+    const publicId = `${existingMember.full_name} - ${existingMember.class_origin || 'Umum'}`;
+    const promptMsg = `📸 GANTI FOTO PROFIL\n\nHalo ${existingMember.full_name}!\nSilakan kirimkan 1 FOTO DIRI TERBARU kamu di obrolan ini.\n\n✨ TIPS PENTING AGAR FOTO TIDAK BLUR / PECAH:\nSaat memilih foto di galeri LINE, pastikan tekan/centang tombol "ORIGINAL" (atau "ASLI") di pojok kiri bawah layar sebelum menekan tombol Kirim.\n\nFoto akan otomatis disimpan di Cloudinary dalam resolusi Full HD dengan format nama:\n"${publicId}".`;
+    return await sendReply(promptMsg);
+  }
+
+  // E.3. UBAH BIODATA REQUEST (SENDS EDIT TEMPLATE)
+  if (
+    (lowerText === 'ubah_biodata' ||
+      lowerText === 'edit_biodata' ||
+      lowerText === 'edit biodata' ||
+      lowerText === 'ubah biodata' ||
+      lowerText === 'update biodata' ||
+      lowerText === '?ubah_biodata' ||
+      lowerText === '#ubah_biodata') &&
+    existingMember &&
+    existingMember.status === 'active'
+  ) {
+    const monthNames = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    const monthStr = monthNames[(existingMember.birth_month || 1) - 1] || `${existingMember.birth_month}`;
+    const currentBirth = `${existingMember.birth_date} ${monthStr} ${existingMember.birth_year || ''}`.trim();
+
+    const templateMsg = `📝 FORM UBAH BIODATA ANGGOTA\n\nHalo ${existingMember.full_name}! 👋\nSilakan salin teks di bawah ini, ubah data yang ingin kamu perbarui, lalu kirimkan kembali ke obrolan ini:\n\n#update_biodata\nNama Lengkap : ${existingMember.full_name}\nNama Baptis : ${existingMember.baptismal_name || '-'}\nIDLine : ${existingMember.line_id || '-'}\nInstagram : ${existingMember.instagram_account || '-'}\nKelas : ${existingMember.class_origin || '-'}\nTahun Masuk : ${existingMember.entry_year || '-'}\nTanggal lahir : ${currentBirth}\nNomor Whatsapp : ${existingMember.whatsapp_number || '-'}\n\n💡 Tips: Kamu cukup mengubah bagian yang ingin diganti saja. Bagian lain biarkan seperti semula.`;
+    return await sendReply(templateMsg);
+  }
+
+  // E.4. SUBMIT UPDATED BIODATA (#update_biodata)
+  if (
+    (lowerText.startsWith('#update_biodata') ||
+      lowerText.startsWith('update_biodata') ||
+      lowerText.startsWith('?update_biodata') ||
+      lowerText.startsWith('#ubah_biodata') ||
+      lowerText.startsWith('ubah_biodata')) &&
+    existingMember &&
+    existingMember.status === 'active'
+  ) {
+    const parsed = parseRegistrationText(rawText);
+    if (!parsed) {
+      return await sendReply(
+        '⚠️ Format data tidak terbaca dengan lengkap. Pastikan format penulisan sesuai dengan template (#update_biodata).'
+      );
+    }
+
+    const updated = await updateMember(existingMember.id, {
+      full_name: parsed.fullName,
+      baptismal_name: parsed.baptismalName,
+      line_id: parsed.lineId,
+      instagram_account: parsed.instagram,
+      class_origin: parsed.classOrigin,
+      entry_year: parsed.entryYear,
+      birth_date: parsed.birthDate,
+      birth_month: parsed.birthMonth,
+      birth_year: parsed.birthYear,
+      whatsapp_number: parsed.whatsapp,
+    });
+
+    const refreshedMember = updated || {
+      ...existingMember,
+      full_name: parsed.fullName,
+      baptismal_name: parsed.baptismalName,
+      line_id: parsed.lineId,
+      instagram_account: parsed.instagram,
+      class_origin: parsed.classOrigin,
+      entry_year: parsed.entryYear,
+      birth_date: parsed.birthDate,
+      birth_month: parsed.birthMonth,
+      birth_year: parsed.birthYear,
+      whatsapp_number: parsed.whatsapp,
+    };
+
+    const profileFlex = LineApiClient.buildMemberProfileFlex({
+      fullName: refreshedMember.full_name,
+      baptismalName: refreshedMember.baptismal_name,
+      lineId: refreshedMember.line_id,
+      instagram: refreshedMember.instagram_account,
+      classOrigin: refreshedMember.class_origin,
+      entryYear: refreshedMember.entry_year,
+      birthDate: refreshedMember.birth_date,
+      birthMonth: refreshedMember.birth_month,
+      birthYear: refreshedMember.birth_year,
+      whatsapp: refreshedMember.whatsapp_number,
+      photoUrl: refreshedMember.photo_url,
+      role: refreshedMember.community_role,
+    });
+
+    if (replyToken) {
+      await lineClient.replyMessage(replyToken, [
+        {
+          type: 'text',
+          text: `✅ BIODATA BERHASIL DIPERBARUI!\n\nHalo ${parsed.fullName}! Biodata kamu telah sukses diperbarui di database MP Community. Berikut kartu profil terbarumu:`,
+        },
+        profileFlex,
+      ]);
+    }
+
+    return { status: 'member_biodata_updated', memberId: existingMember.id };
+  }
+
+  // ==========================================
+  // F. SECURITY PREFIX VALIDATION & COMMAND DISPATCH
+  // ==========================================
+
+  // F.1. OFFICER COMMANDS (MUST START WITH '#')
   if (rawText.startsWith('#')) {
     if (!isOfficer) {
       return await sendReply(
