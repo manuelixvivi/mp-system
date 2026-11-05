@@ -83,24 +83,17 @@ export default function Sidebar() {
       title: 'Broadcast & Delivery',
       items: [
         {
-          label: 'Pesan Custom Grup',
-          href: '/dashboard/broadcast/custom',
-          icon: MessageSquare,
-          badge: 'Divisi',
-          roles: ['superadmin', 'liturgi', 'logistik', 'pubdok'],
-        },
-        {
-          label: 'Manual Broadcast Studio',
+          label: 'Broadcast Studio',
           href: '/dashboard/broadcast/manual',
           icon: Radio,
-          badge: 'Manual',
-          roles: ['superadmin', 'liturgi', 'logistik'],
+          badge: 'Studio',
+          roles: ['superadmin', 'liturgi', 'logistik', 'pubdok'],
         },
         {
           label: 'Riwayat Broadcast',
           href: '/dashboard/broadcast/history',
           icon: History,
-          roles: ['superadmin', 'liturgi', 'logistik'],
+          roles: ['superadmin', 'liturgi', 'logistik', 'pubdok'],
         },
       ],
     },
