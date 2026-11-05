@@ -253,6 +253,36 @@ export async function handleLineWebhookEvent(event: any) {
         ]);
       }
 
+      // NOTIFY PUBDOK COORDINATOR (User Request: "Kalau ada update atau pembaharuan foto orang yang sudah terdaftar langsung infokan ke koordinator pubdok. Tapi kalau user baru ga perlu kasih tau.")
+      try {
+        const pubdokMember = allMembers.find(
+          (m) => m.community_role === 'pubdok' && m.line_user_id && m.line_user_id.trim().startsWith('U')
+        );
+        const pubdokProfile = allProfiles.find(
+          (p) => p.role === 'pubdok' && p.is_active && p.line_user_id && p.line_user_id.trim().startsWith('U')
+        );
+        const pubdokUserId = pubdokMember?.line_user_id || pubdokProfile?.line_user_id;
+        const pubdokName = pubdokMember?.full_name || pubdokProfile?.name || 'Tim Pubdok';
+
+        if (pubdokUserId && pubdokUserId !== lineUserId) {
+          const pubdokNotice = `📢 INFO PEMBARUAN FOTO ANGGOTA (PUBDOK)\n\nHalo ${pubdokName}! 👋\n\nAnggota terdaftar berikut baru saja memperbarui foto profilnya di sistem:\n\n👤 Nama: ${existingMember.full_name}\n🏫 Kelas: ${existingMember.class_origin || '-'}\n📸 Format Cloudinary: "${publicId}"\n🔗 URL: ${uploadResult.url}\n\nFoto terbaru ini siap digunakan untuk keperluan desain & kartu ucapan ulang tahun MP Community.`;
+          await lineClient.pushMessage(pubdokUserId, [
+            {
+              type: 'text',
+              text: pubdokNotice,
+            },
+            {
+              type: 'image',
+              originalContentUrl: uploadResult.url,
+              previewImageUrl: uploadResult.url,
+            },
+          ]);
+          console.log(`[PUBDOK NOTIFY] Successfully notified Pubdok coordinator ${pubdokName} (${pubdokUserId})`);
+        }
+      } catch (pubdokErr: any) {
+        console.warn('[PUBDOK NOTIFY WARNING]:', pubdokErr.message);
+      }
+
       return { status: 'member_photo_updated', memberId: existingMember.id, photoUrl: uploadResult.url, publicId };
     }
   }
@@ -394,7 +424,7 @@ export async function handleLineWebhookEvent(event: any) {
     const defaultGroup = allGroups.find((g) => g.is_active);
     const groupLink =
       (settings as any).group_invite_link ||
-      (defaultGroup ? `https://line.me/R/ti/g/${defaultGroup.group_id}` : 'https://line.me/ti/g/mp_community_official');
+      'https://line.me/R/ti/g/Lptzr-3e_p';
 
     const welcomeMsg = `🎉 SELAMAT BERGABUNG DI MP COMMUNITY! ✝️\n\nHalo ${pending.fullName}!\nData pendaftaran Anda telah resmi terverifikasi dan tersimpan dalam sistem database MP Community.\n\nFoto Anda telah tersimpan aman di Cloudinary (Full HD).\n\n👥 TAUTAN GRUP LINE:\nSilakan klik tautan di bawah ini untuk langsung bergabung ke Grup LINE Komunitas MP:\n👉 ${groupLink}\n\nSampai jumpa di kegiatan komunitas dan Tuhan memberkati! 🙏✨`;
     return await sendReply(welcomeMsg);
@@ -631,6 +661,38 @@ export async function handleLineWebhookEvent(event: any) {
       return await sendReply(await getStatusMessage(userProfile?.role || 'liturgi', todayIso));
     }
 
+    // OFFICER COMMAND: Whitelist pre-approved candidate (#whitelist or #tambah_calon)
+    if (
+      cleanCommand.startsWith('whitelist ') ||
+      cleanCommand.startsWith('tambah_calon ') ||
+      cleanCommand.startsWith('calon ')
+    ) {
+      const payload = rawText.replace(/^[#/?](?:whitelist|tambah_calon|calon)\s+/i, '').trim();
+      const parts = payload.split('-');
+      const candidateName = parts[0]?.trim();
+      const candidateClass = parts[1]?.trim() || '';
+
+      if (!candidateName || candidateName.length < 2) {
+        return await sendReply(
+          '⚠️ FORMAT TAMBAH CALON ANGGOTA:\n\nGunakan format:\n#whitelist <Nama Lengkap> - <Asal Kelas>\nContoh: #whitelist Tadeus Thenaris - PPTI 23'
+        );
+      }
+
+      const createdCandidate = await createMember({
+        full_name: candidateName,
+        class_origin: candidateClass || undefined,
+        birth_date: 1,
+        birth_month: 1,
+        community_role: 'anggota_aktif',
+        status: 'active',
+        line_verification_status: 'not_set',
+      });
+
+      return await sendReply(
+        `✅ CALON ANGGOTA BERHASIL DIDAFTARKAN KE WHITELIST!\n\n👤 Nama: ${createdCandidate.full_name}\n🏫 Kelas: ${createdCandidate.class_origin || '-'}\n\n💡 Sekarang yang bersangkutan sudah diizinkan untuk registrasi mandiri via chat bot LINE menggunakan format ?registrasi.`
+      );
+    }
+
     if (cleanCommand === 'get_all_groupid') {
       if (userProfile?.role !== 'superadmin') {
         return await sendReply('⛔ Akses Ditolak: Perintah #get_all_groupid hanya dapat digunakan oleh Superadmin.');
@@ -763,11 +825,11 @@ export async function handleLineWebhookEvent(event: any) {
 // FORMATTERS & TEMPLATES
 // ==========================================
 function getMenuMessage(role: UserRole, name: string): string {
-  return `🤖 MENU PETUGAS MP CONTROL SYSTEM\nHalo, ${name}!\n\n💡 Perintah Tersedia (Awali dengan #):\n• #status — Cek status otomatisasi hari ini\n• #help — Panduan lengkap perintah\n• #approve — Setujui renungan harian\n• #reject — Tolak renungan harian\n• #broadcast — Memicu siaran manual ke grup`;
+  return `🤖 MENU PETUGAS MP CONTROL SYSTEM\nHalo, ${name}!\n\n💡 Perintah Tersedia (Awali dengan #):\n• #status — Cek status otomatisasi hari ini\n• #whitelist <Nama> - <Kelas> — Daftarkan calon anggota baru\n• #help — Panduan lengkap perintah\n• #approve — Setujui renungan harian\n• #reject — Tolak renungan harian\n• #broadcast — Memicu siaran manual ke grup`;
 }
 
 function getHelpMessage(role: UserRole, name: string): string {
-  return `📖 BANTUAN PERINTAH PETUGAS MP\n\nSemua perintah pengurus wajib diawali tanda '#':\n\n• #status — Pantau status siaran renungan & ultah\n• #approve — Setujui draft renungan sebelum 09:45 WIB\n• #reject — Tolak siaran renungan\n• #broadcast — Kirim renungan ke grup sekarang\n• #id — Cek LINE User ID Anda\n\nUntuk anggota terdaftar, Anda dapat langsung bertanya seputar komunitas tanpa awalan tanda khusus.`;
+  return `📖 BANTUAN PERINTAH PETUGAS MP\n\nSemua perintah pengurus wajib diawali tanda '#':\n\n• #status — Pantau status siaran renungan & ultah\n• #whitelist <Nama> - <Kelas> — Buka akses registrasi calon anggota baru\n• #approve — Setujui draft renungan sebelum 09:45 WIB\n• #reject — Tolak siaran renungan\n• #broadcast — Kirim renungan ke grup sekarang\n• #id — Cek LINE User ID Anda\n\nUntuk anggota terdaftar, Anda dapat langsung bertanya seputar komunitas tanpa awalan tanda khusus.`;
 }
 
 function formatGroupListMessage(groups: LineGroup[]): string {

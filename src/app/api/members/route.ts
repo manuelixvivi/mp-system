@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
       notes,
     } = body;
 
-    if (!full_name || !birth_date || !birth_month) {
-      return NextResponse.json({ error: 'Nama lengkap, tanggal lahir, dan bulan lahir wajib diisi.' }, { status: 400 });
+    if (!full_name || full_name.trim().length === 0) {
+      return NextResponse.json({ error: 'Nama lengkap wajib diisi.' }, { status: 400 });
     }
 
     const verificationStatus = (line_user_id && line_user_id.trim().length > 0) || (line_id && line_id.trim().length > 0)
@@ -71,8 +71,8 @@ export async function POST(req: NextRequest) {
     const newMember = await createMember({
       full_name: full_name.trim(),
       baptismal_name: baptismal_name?.trim() || undefined,
-      birth_date: Number(birth_date),
-      birth_month: Number(birth_month),
+      birth_date: Number(birth_date) || 1,
+      birth_month: Number(birth_month) || 1,
       birth_year: birth_year ? Number(birth_year) : undefined,
       class_origin: class_origin?.trim() || undefined,
       entry_year: entry_year ? Number(entry_year) : undefined,

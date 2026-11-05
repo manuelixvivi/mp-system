@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadPhotoToDriveOrLocal } from '@/lib/drive/client';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth/session';
-import { getProfileByEmail, updateMember } from '@/lib/db/store';
+import { getProfileByEmail, updateMember, getMembers, getProfiles } from '@/lib/db/store';
+import { LineApiClient } from '@/lib/line/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,9 +49,39 @@ export async function POST(req: NextRequest) {
       { customPublicId }
     );
 
-    // If memberId is provided, update member record directly
+    // If memberId is provided, update member record directly & notify pubdok
     if (memberId) {
       await updateMember(memberId, { photo_url: uploadResult.url });
+
+      try {
+        const allMembers = await getMembers();
+        const allProfiles = await getProfiles();
+        const pubdokMember = allMembers.find(
+          (m) => m.community_role === 'pubdok' && m.line_user_id && m.line_user_id.trim().startsWith('U')
+        );
+        const pubdokProfile = allProfiles.find(
+          (p) => p.role === 'pubdok' && p.is_active && p.line_user_id && p.line_user_id.trim().startsWith('U')
+        );
+        const pubdokUserId = pubdokMember?.line_user_id || pubdokProfile?.line_user_id;
+        const pubdokName = pubdokMember?.full_name || pubdokProfile?.name || 'Tim Pubdok';
+
+        if (pubdokUserId) {
+          const lineClient = new LineApiClient();
+          await lineClient.pushMessage(pubdokUserId, [
+            {
+              type: 'text',
+              text: `📢 INFO PEMBARUAN FOTO ANGGOTA (PUBDOK)\n\nHalo ${pubdokName}! 👋\n\nFoto anggota terdaftar berikut baru saja diperbarui melalui dashboard:\n\n👤 Nama: ${cleanName}\n🏫 Kelas: ${cleanClass}\n📸 Cloudinary: "${customPublicId}"\n🔗 URL: ${uploadResult.url}`,
+            },
+            {
+              type: 'image',
+              originalContentUrl: uploadResult.url,
+              previewImageUrl: uploadResult.url,
+            },
+          ]);
+        }
+      } catch (err: any) {
+        console.warn('[PUBDOK NOTIFY FROM WEB WARNING]:', err.message);
+      }
     }
 
     return NextResponse.json({

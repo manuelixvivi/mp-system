@@ -358,8 +358,8 @@ export default function BirthdayManagementPage() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !birthDate || !birthMonth) {
-      alert('Nama lengkap, tanggal lahir, dan bulan lahir wajib diisi.');
+    if (!fullName || fullName.trim().length === 0) {
+      alert('Nama lengkap wajib diisi.');
       return;
     }
 
@@ -369,10 +369,10 @@ export default function BirthdayManagementPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: fullName,
-          baptismal_name: baptismalName,
-          birth_date: Number(birthDate),
-          birth_month: Number(birthMonth),
+          full_name: fullName.trim(),
+          baptismal_name: baptismalName.trim() || undefined,
+          birth_date: Number(birthDate) || 1,
+          birth_month: Number(birthMonth) || 1,
           birth_year: birthYear ? Number(birthYear) : undefined,
           class_origin: classOrigin,
           entry_year: entryYear ? Number(entryYear) : undefined,
