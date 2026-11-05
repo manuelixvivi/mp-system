@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   FileText,
   Sparkles,
+  MessageSquare,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -81,6 +82,13 @@ export default function Sidebar() {
     {
       title: 'Broadcast & Delivery',
       items: [
+        {
+          label: 'Pesan Custom Grup',
+          href: '/dashboard/broadcast/custom',
+          icon: MessageSquare,
+          badge: 'Divisi',
+          roles: ['superadmin', 'liturgi', 'logistik', 'pubdok'],
+        },
         {
           label: 'Manual Broadcast Studio',
           href: '/dashboard/broadcast/manual',

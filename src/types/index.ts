@@ -41,7 +41,7 @@ export interface LineBot {
   updated_at?: string;
 }
 
-export type AutomationModule = 'devotional' | 'birthday';
+export type AutomationModule = 'devotional' | 'birthday' | 'custom';
 
 export interface LineGroup {
   id: string;

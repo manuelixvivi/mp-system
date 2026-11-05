@@ -1,25 +1,76 @@
+import { v2 as cloudinary } from 'cloudinary';
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { supabase, isSupabaseConfigured } from '../db/supabase';
 
+// Configure Cloudinary if URL is provided
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({
+    cloudinary_url: process.env.CLOUDINARY_URL,
+  });
+}
+
 /**
- * Photo Storage Service for MP Control System
- * Priority order:
- * 1. Supabase Storage (Zero extra setup, uses existing database credentials)
- * 2. Google Drive API (If Service Account credentials are provided)
- * 3. Local public storage (/public/uploads/members/)
+ * Uploads a photo buffer to Cloudinary with Full HD Original Quality (No Compression/No Blur)
+ * Falls back to Supabase Storage -> Local Storage if Cloudinary is unavailable.
  */
 export async function uploadPhotoToDriveOrLocal(
   fileName: string,
   mimeType: string,
   buffer: Buffer
-): Promise<{ fileId: string; url: string; source: 'supabase_storage' | 'google_drive' | 'local_storage' }> {
+): Promise<{ fileId: string; url: string; source: 'cloudinary' | 'supabase_storage' | 'google_drive' | 'local_storage' }> {
   const safeName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-  // 1. PRIMARY & EASIEST: Supabase Storage (Bucket: member-photos)
-  // No extra Google Cloud accounts, JSON keys, or IAM permissions required!
+  // 1. TOP PRIORITY: Cloudinary (Full HD, Uncompressed, Generous Quota)
+  const cloudinaryUrl = process.env.CLOUDINARY_URL;
+  if (cloudinaryUrl) {
+    try {
+      // Get real wall-clock epoch timestamp to prevent stale request error if system clock has drifted
+      let epochSeconds = Math.floor(Date.now() / 1000);
+      try {
+        const headRes = await fetch('https://www.cloudflare.com', { method: 'HEAD', cache: 'no-store' });
+        const dateHeader = headRes.headers.get('date');
+        if (dateHeader) {
+          epochSeconds = Math.floor(new Date(dateHeader).getTime() / 1000);
+        }
+      } catch (e) {
+        // Fallback to local system time if network check fails
+      }
+
+      const uploadResult = await new Promise<any>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'mp_community/members',
+            resource_type: 'image',
+            timestamp: epochSeconds,
+            // Keep full original quality (no compression, no blur, no downscale)
+            quality: 100,
+            unique_filename: true,
+          },
+          (err, res) => {
+            if (err) reject(err);
+            else resolve(res);
+          }
+        );
+        uploadStream.end(buffer);
+      });
+
+      if (uploadResult?.secure_url) {
+        console.log(`[CLOUDINARY FULL HD SUCCESS] Uploaded ${fileName} -> ${uploadResult.secure_url}`);
+        return {
+          fileId: uploadResult.public_id,
+          url: uploadResult.secure_url,
+          source: 'cloudinary',
+        };
+      }
+    } catch (cErr: any) {
+      console.warn('[CLOUDINARY UPLOAD WARNING]:', cErr.message, 'Falling back to Supabase Storage...');
+    }
+  }
+
+  // 2. ALTERNATIVE: Supabase Storage (Bucket: member-photos)
   if (isSupabaseConfigured && supabase) {
     try {
       const storagePath = `members/${safeName}`;
@@ -45,14 +96,14 @@ export async function uploadPhotoToDriveOrLocal(
           };
         }
       } else if (uploadErr) {
-        console.warn('[SUPABASE STORAGE WARNING] Upload error, trying next provider:', uploadErr.message);
+        console.warn('[SUPABASE STORAGE WARNING] Upload error:', uploadErr.message);
       }
     } catch (supaErr: any) {
       console.warn('[SUPABASE STORAGE EXCEPTION]:', supaErr.message);
     }
   }
 
-  // 2. ALTERNATIVE: Google Drive API (if user configured Service Account)
+  // 3. ALTERNATIVE: Google Drive API (if user configured Service Account)
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
   let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || process.env.GOOGLE_PRIVATE_KEY;
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -70,15 +121,11 @@ export async function uploadPhotoToDriveOrLocal(
       });
 
       const drive = google.drive({ version: 'v3', auth });
-
       const stream = new Readable();
       stream.push(buffer);
       stream.push(null);
 
-      const fileMetadata: any = {
-        name: fileName,
-      };
-
+      const fileMetadata: any = { name: fileName };
       if (folderId && folderId.trim().length > 3) {
         fileMetadata.parents = [folderId.trim()];
       }
@@ -97,10 +144,7 @@ export async function uploadPhotoToDriveOrLocal(
         try {
           await drive.permissions.create({
             fileId: fileId,
-            requestBody: {
-              role: 'reader',
-              type: 'anyone',
-            },
+            requestBody: { role: 'reader', type: 'anyone' },
           });
         } catch (permErr: any) {
           console.warn('[DRIVE PERMISSION WARNING]:', permErr.message);
@@ -119,7 +163,7 @@ export async function uploadPhotoToDriveOrLocal(
     }
   }
 
-  // 3. FALLBACK: Save to public uploads directory
+  // 4. FALLBACK: Save to public uploads directory
   try {
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'members');
     if (!fs.existsSync(uploadDir)) {
@@ -148,3 +192,6 @@ export async function uploadPhotoToDriveOrLocal(
     };
   }
 }
+
+// Export alias
+export const uploadPhotoToCloudinaryOrFallback = uploadPhotoToDriveOrLocal;
