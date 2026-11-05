@@ -402,7 +402,7 @@ export async function handleLineWebhookEvent(event: any) {
   if (rawText.startsWith('#')) {
     if (!isOfficer) {
       return await sendReply(
-        "Halo! Perintah dengan awalan tanda '#' dikhususkan untuk pengurus/petugas MP Community. Jika kamu ingin bertanya atau mendaftar anggota, silakan gunakan awalan tanda tanya '?' ya (contoh: ?registrasi atau ?tanya). Terima kasih! 🙏✨"
+        "Halo! Perintah dengan awalan tanda '#' dikhususkan untuk pengurus/petugas MP Community. Jika kamu anggota terdaftar, kamu bisa langsung mengetikkan pertanyaanmu di obrolan ini tanpa awalan khusus ya. Terima kasih! 🙏✨"
       );
     }
 
@@ -494,64 +494,60 @@ export async function handleLineWebhookEvent(event: any) {
     );
   }
 
-  // E.2. REGULAR USER / MEMBER INQUIRIES (MUST START WITH '?')
-  if (rawText.startsWith('?')) {
-    const questionText = rawText.slice(1).trim();
+  // E.2. REGISTERED MEMBER INQUIRIES (NO '?' REQUIRED)
+  // Check if sender is registered in database (Member or Profile)
+  const registeredSender = existingMember || allMembers.find((m) => m.line_user_id === lineUserId);
+  const isRegisteredUser = Boolean(registeredSender || userProfile);
 
-    if (!questionText) {
-      return await sendReply(
-        "Halo! Kamu mengirim tanda tanya '?'. Ada yang bisa kami bantu seputar komunitas MP? Silakan ketik pertanyaanmu setelah tanda tanya (contoh: ?kapan ada misa bersama atau ?info ulang tahun). Terima kasih! 😊🙏"
-      );
-    }
-
-    // CHECK DATABASE: User must be a registered member or user in database!
+  if (!isRegisteredUser) {
     // "Bot jangan merespon apa-apa jika... diluar user terdaftar didatabase"
-    const registeredSender = existingMember || allMembers.find((m) => m.line_user_id === lineUserId);
-    if (!registeredSender && !userProfile) {
-      // SILENT: Do not respond to unregistered users!
-      return { status: 'ignored_unregistered_user' };
-    }
-
-    // Run Intelligent LLM Triage
-    const officerMembers = allMembers.filter((m) => m.community_role && m.community_role !== 'anggota_aktif');
-    const triageResult = await triageMemberMessage(
-      questionText,
-      registeredSender || { full_name: userProfile!.name } as Member,
-      officerMembers,
-      allProfiles
-    );
-
-    // If outside religious organization: DO NOT RESPOND
-    // "Bot jangan merespon apa-apa jika ditanya terkait diluar Organisasi keagamaan itu sendiri"
-    if (!triageResult || !triageResult.isRelevant) {
-      return { status: 'ignored_out_of_scope_inquiry' };
-    }
-
-    // Reply to member with division & coordinator info
-    await sendReply(triageResult.replyMessage);
-
-    // Forward member's question to the designated officer's LINE User ID if available
-    if (triageResult.coordinatorLineUserId && triageResult.coordinatorLineUserId !== lineUserId) {
-      try {
-        await lineClient.pushMessage(triageResult.coordinatorLineUserId, [
-          {
-            type: 'text',
-            text: triageResult.summaryForOfficer,
-          },
-        ]);
-        console.log(`[TRIAGE FORWARD] Forwarded inquiry to ${triageResult.coordinatorName} (${triageResult.coordinatorLineUserId})`);
-      } catch (fwdErr: any) {
-        console.warn('[TRIAGE FORWARD ERROR]:', fwdErr.message);
-      }
-    }
-
-    return { status: 'replied_triage_routing', division: triageResult.division };
+    // SILENT: Do not respond to unregistered users!
+    return { status: 'ignored_unregistered_user' };
   }
 
-  // E.3. NO VALID PREFIX PROVIDED (NOT STARTING WITH '#' OR '?')
-  return await sendReply(
-    "Halo! Untuk berinteraksi atau bertanya ke bot MP Community, mohon awali pesanmu dengan tanda tanya '?' untuk anggota (contoh: ?registrasi atau ?tanya seputar renungan) atau tanda '#' untuk pengurus (contoh: #menu). Terima kasih banyak ya! 😊🙏"
+  // Registered member can ask directly without '?'; also handles if they still type '?'
+  const questionText = rawText.startsWith('?') ? rawText.slice(1).trim() : rawText.trim();
+
+  if (!questionText) {
+    return await sendReply(
+      "Halo! Ada yang bisa kami bantu seputar komunitas MP? Silakan ketik pertanyaanmu langsung di obrolan ini ya. Terima kasih! 😊🙏"
+    );
+  }
+
+  // Run Intelligent LLM Triage
+  const officerMembers = allMembers.filter((m) => m.community_role && m.community_role !== 'anggota_aktif');
+  const triageResult = await triageMemberMessage(
+    questionText,
+    registeredSender || ({ full_name: userProfile!.name } as Member),
+    officerMembers,
+    allProfiles
   );
+
+  // If outside religious organization: DO NOT RESPOND
+  // "Bot jangan merespon apa-apa jika ditanya terkait diluar Organisasi keagamaan itu sendiri"
+  if (!triageResult || !triageResult.isRelevant) {
+    return { status: 'ignored_out_of_scope_inquiry' };
+  }
+
+  // Reply to member with division & coordinator info
+  await sendReply(triageResult.replyMessage);
+
+  // Forward member's question to the designated officer's LINE User ID if available
+  if (triageResult.coordinatorLineUserId && triageResult.coordinatorLineUserId !== lineUserId) {
+    try {
+      await lineClient.pushMessage(triageResult.coordinatorLineUserId, [
+        {
+          type: 'text',
+          text: triageResult.summaryForOfficer,
+        },
+      ]);
+      console.log(`[TRIAGE FORWARD] Forwarded inquiry to ${triageResult.coordinatorName} (${triageResult.coordinatorLineUserId})`);
+    } catch (fwdErr: any) {
+      console.warn('[TRIAGE FORWARD ERROR]:', fwdErr.message);
+    }
+  }
+
+  return { status: 'replied_triage_routing', division: triageResult.division };
 }
 
 // ==========================================
@@ -562,7 +558,7 @@ function getMenuMessage(role: UserRole, name: string): string {
 }
 
 function getHelpMessage(role: UserRole, name: string): string {
-  return `📖 BANTUAN PERINTAH PETUGAS MP\n\nSemua perintah pengurus wajib diawali tanda '#':\n\n• #status — Pantau status siaran renungan & ultah\n• #approve — Setujui draft renungan sebelum 09:45 WIB\n• #reject — Tolak siaran renungan\n• #broadcast — Kirim renungan ke grup sekarang\n• #id — Cek LINE User ID Anda\n\nUntuk anggota umum, seluruh pesan wajib diawali '?'.`;
+  return `📖 BANTUAN PERINTAH PETUGAS MP\n\nSemua perintah pengurus wajib diawali tanda '#':\n\n• #status — Pantau status siaran renungan & ultah\n• #approve — Setujui draft renungan sebelum 09:45 WIB\n• #reject — Tolak siaran renungan\n• #broadcast — Kirim renungan ke grup sekarang\n• #id — Cek LINE User ID Anda\n\nUntuk anggota terdaftar, Anda dapat langsung bertanya seputar komunitas tanpa awalan tanda khusus.`;
 }
 
 function formatGroupListMessage(groups: LineGroup[]): string {
