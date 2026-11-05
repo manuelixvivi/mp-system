@@ -1,4 +1,4 @@
-import { getLineBotSync } from '../db/store';
+import { getLineBotSync, getLineBot } from '../db/store';
 import { Member } from '@/types';
 
 export interface LineMentionee {
@@ -38,10 +38,26 @@ export class LineApiClient {
     this.channelSecret = !rawSecret.includes('demo') && !rawSecret.includes('dummy') ? rawSecret : '';
   }
 
+  private async ensureInitialized(): Promise<void> {
+    if (!this.channelAccessToken) {
+      try {
+        const bot = await getLineBot();
+        const rawToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || bot?.channel_access_token || '';
+        const rawSecret = process.env.LINE_CHANNEL_SECRET || bot?.channel_secret || '';
+
+        this.channelAccessToken = !rawToken.includes('demo') && !rawToken.includes('dummy') ? rawToken : '';
+        this.channelSecret = !rawSecret.includes('demo') && !rawSecret.includes('dummy') ? rawSecret : '';
+      } catch (err) {
+        console.warn('[LINE CLIENT] ensureInitialized warning:', err);
+      }
+    }
+  }
+
   /**
    * Push message to a user or group
    */
   async pushMessage(to: string, messages: any[]): Promise<SendMessageResult> {
+    await this.ensureInitialized();
     if (!this.channelAccessToken) {
       console.warn(`[LINE CLIENT] Push message aborted: Channel Access Token belum dikonfigurasi.`);
       return {
@@ -90,6 +106,7 @@ export class LineApiClient {
    * Reply to a webhook event replyToken
    */
   async replyMessage(replyToken: string, messages: any[]): Promise<SendMessageResult> {
+    await this.ensureInitialized();
     if (!this.channelAccessToken) {
       console.warn(`[LINE CLIENT] Reply message aborted: Channel Access Token belum dikonfigurasi.`);
       return {
@@ -134,6 +151,7 @@ export class LineApiClient {
    * Retrieves group summary information (name, picture) from LINE Messaging API
    */
   async getGroupSummary(groupId: string): Promise<{ groupId: string; groupName: string; pictureUrl?: string } | null> {
+    await this.ensureInitialized();
     if (!this.channelAccessToken || !groupId) return null;
     try {
       const response = await fetch(`https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/summary`, {
@@ -164,6 +182,7 @@ export class LineApiClient {
     groupId: string,
     userId: string
   ): Promise<{ displayName: string; userId: string; pictureUrl?: string } | null> {
+    await this.ensureInitialized();
     if (!this.channelAccessToken || !groupId || !userId) return null;
     try {
       const response = await fetch(
@@ -194,6 +213,7 @@ export class LineApiClient {
    * Download binary content (image/video/file) from LINE Content API
    */
   async getMessageContent(messageId: string): Promise<Buffer | null> {
+    await this.ensureInitialized();
     if (!this.channelAccessToken || !messageId) return null;
     try {
       const response = await fetch(

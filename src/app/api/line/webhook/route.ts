@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { handleLineWebhookEvent } from '@/lib/line/bot-handler';
-import { getLineBotSync } from '@/lib/db/store';
+import { getLineBotSync, getLineBot } from '@/lib/db/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,13 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.text();
     const signature = req.headers.get('x-line-signature');
     const bot = getLineBotSync();
-    const channelSecret = process.env.LINE_CHANNEL_SECRET || bot?.channel_secret || '';
+    let channelSecret = process.env.LINE_CHANNEL_SECRET || bot?.channel_secret || '';
+    if (!channelSecret) {
+      try {
+        const dbBot = await getLineBot();
+        channelSecret = dbBot?.channel_secret || '';
+      } catch (e) {}
+    }
 
     // Verify signature if signature header and secret are present
     if (signature && channelSecret) {

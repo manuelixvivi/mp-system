@@ -34,23 +34,144 @@ const pendingActions = new Map<string, PendingAction>();
 // Pending member self-registration store
 interface PendingMemberRegistration {
   lineUserId: string;
-  fullName: string;
+  fullName?: string;
   baptismalName?: string;
   lineId?: string;
   instagram?: string;
   classOrigin?: string;
   entryYear?: number;
-  birthDate: number;
-  birthMonth: number;
+  birthDate?: number;
+  birthMonth?: number;
   birthYear?: number;
   whatsapp?: string;
   photoUrl?: string;
   matchedMemberId?: string; // Pre-approved whitelist member ID in database
-  step: 'awaiting_photo' | 'awaiting_confirmation';
+  step:
+    | 'awaiting_name'
+    | 'awaiting_baptismal'
+    | 'awaiting_line_id'
+    | 'awaiting_instagram'
+    | 'awaiting_class'
+    | 'awaiting_entry_year'
+    | 'awaiting_birth_date'
+    | 'awaiting_whatsapp'
+    | 'awaiting_photo'
+    | 'awaiting_confirmation';
   expiresAt: number;
 }
 
 const pendingMemberRegistrations = new Map<string, PendingMemberRegistration>();
+
+const MONTH_MAP_REG: Record<string, number> = {
+  januari: 1, jan: 1, january: 1,
+  februari: 2, feb: 2, february: 2,
+  maret: 3, mar: 3, march: 3,
+  april: 4, apr: 4,
+  mei: 5, may: 5,
+  juni: 6, jun: 6, june: 6,
+  juli: 7, jul: 7, july: 7,
+  agustus: 8, agt: 8, agu: 8, august: 8,
+  september: 9, sep: 9, sept: 9,
+  oktober: 10, okt: 10, october: 10,
+  november: 11, nov: 11,
+  desember: 12, des: 12, december: 12,
+};
+
+function parseBirthDateInput(value: string): { day: number; month: number; year?: number } {
+  let birthDate = 1;
+  let birthMonth = 1;
+  let birthYear: number | undefined;
+
+  const dateParts = value.match(/^(\d{1,2})[\s\-/.]([A-Za-z]+|\d{1,2})(?:[\s\-/.](19\d{2}|20\d{2}))?$/);
+  if (dateParts) {
+    birthDate = parseInt(dateParts[1], 10);
+    const rawM = dateParts[2].toLowerCase();
+    if (MONTH_MAP_REG[rawM]) {
+      birthMonth = MONTH_MAP_REG[rawM];
+    } else if (!isNaN(parseInt(rawM, 10))) {
+      birthMonth = parseInt(rawM, 10);
+    }
+    if (dateParts[3]) {
+      birthYear = parseInt(dateParts[3], 10);
+    }
+  } else {
+    const dayM = value.match(/\b([1-9]|[12]\d|3[01])\b/);
+    if (dayM) birthDate = parseInt(dayM[1], 10);
+    for (const [mName, mNum] of Object.entries(MONTH_MAP_REG)) {
+      if (value.toLowerCase().includes(mName)) {
+        birthMonth = mNum;
+        break;
+      }
+    }
+    const yM = value.match(/\b(19\d{2}|20\d{2})\b/);
+    if (yM) birthYear = parseInt(yM[1], 10);
+  }
+
+  return {
+    day: Math.min(Math.max(birthDate, 1), 31),
+    month: Math.min(Math.max(birthMonth, 1), 12),
+    year: birthYear,
+  };
+}
+
+async function finalizeRegistration(
+  pending: PendingMemberRegistration,
+  lineUserId: string,
+  sendReply: (text: string) => Promise<any>
+) {
+  let memberId = pending.matchedMemberId;
+  const birthDate = pending.birthDate || 1;
+  const birthMonth = pending.birthMonth || 1;
+
+  if (memberId) {
+    await updateMember(memberId, {
+      full_name: pending.fullName || 'Member',
+      baptismal_name: pending.baptismalName,
+      line_id: pending.lineId,
+      line_user_id: lineUserId,
+      instagram_account: pending.instagram,
+      class_origin: pending.classOrigin,
+      entry_year: pending.entryYear,
+      birth_date: birthDate,
+      birth_month: birthMonth,
+      birth_year: pending.birthYear,
+      whatsapp_number: pending.whatsapp,
+      photo_url: pending.photoUrl,
+      community_role: 'anggota_aktif',
+      status: 'active',
+      line_verification_status: 'verified',
+    });
+  } else {
+    const created = await createMember({
+      full_name: pending.fullName || 'Member',
+      baptismal_name: pending.baptismalName,
+      line_id: pending.lineId,
+      line_user_id: lineUserId,
+      instagram_account: pending.instagram,
+      class_origin: pending.classOrigin,
+      entry_year: pending.entryYear,
+      birth_date: birthDate,
+      birth_month: birthMonth,
+      birth_year: pending.birthYear,
+      whatsapp_number: pending.whatsapp,
+      photo_url: pending.photoUrl,
+      community_role: 'anggota_aktif',
+      status: 'active',
+      line_verification_status: 'verified',
+    });
+    memberId = created.id;
+  }
+
+  pendingMemberRegistrations.delete(lineUserId);
+
+  const settings = await getAutomationSettings();
+  const groupLink =
+    (settings as any).group_invite_link ||
+    'https://line.me/R/ti/g/Lptzr-3e_p';
+
+  const welcomeMsg = `🎉 SELAMAT BERGABUNG DI MP COMMUNITY! ✝️\n\nHalo ${pending.fullName}!\nData pendaftaran Anda telah resmi terverifikasi dan tersimpan dalam sistem database MP Community.\n\nFoto Anda telah tersimpan aman di Cloudinary (Full HD).\n\n👥 TAUTAN GRUP LINE:\nSilakan klik tautan di bawah ini untuk langsung bergabung ke Grup LINE Komunitas MP:\n👉 ${groupLink}\n\nSampai jumpa di kegiatan komunitas dan Tuhan memberkati! 🙏✨`;
+  return await sendReply(welcomeMsg);
+}
 
 // Pending photo update store for active members
 interface PendingPhotoUpdate {
@@ -175,7 +296,13 @@ export async function handleLineWebhookEvent(event: any) {
 
     // CASE A: NEW MEMBER REGISTRATION (Saved as "Nama - Kelas")
     if (pendingReg) {
-      const cleanName = pendingReg.fullName.trim().replace(/[/\\?%*:|"<>]/g, '');
+      if (pendingReg.step !== 'awaiting_photo' && pendingReg.step !== 'awaiting_confirmation') {
+        return await sendReply(
+          '📸 Foto Anda diterima, tetapi mohon selesaikan pengisian data teks terlebih dahulu ya.'
+        );
+      }
+
+      const cleanName = (pendingReg.fullName || 'Member').trim().replace(/[/\\?%*:|"<>]/g, '');
       const cleanClass = (pendingReg.classOrigin || 'Umum').trim().replace(/[/\\?%*:|"<>]/g, '');
       const publicId = `${cleanName} - ${cleanClass}`;
 
@@ -191,21 +318,27 @@ export async function handleLineWebhookEvent(event: any) {
       pendingMemberRegistrations.set(lineUserId, pendingReg);
 
       const flexMessage = LineApiClient.buildRegistrationConfirmationFlex({
-        fullName: pendingReg.fullName,
+        fullName: pendingReg.fullName || cleanName,
         baptismalName: pendingReg.baptismalName,
         lineId: pendingReg.lineId,
         instagram: pendingReg.instagram,
         classOrigin: pendingReg.classOrigin,
         entryYear: pendingReg.entryYear,
-        birthDate: pendingReg.birthDate,
-        birthMonth: pendingReg.birthMonth,
+        birthDate: pendingReg.birthDate || 1,
+        birthMonth: pendingReg.birthMonth || 1,
         birthYear: pendingReg.birthYear,
         whatsapp: pendingReg.whatsapp,
         photoUrl: uploadResult.url,
       });
 
       if (replyToken) {
-        await lineClient.replyMessage(replyToken, [flexMessage]);
+        await lineClient.replyMessage(replyToken, [
+          flexMessage,
+          {
+            type: 'text',
+            text: '👆 Silakan periksa kartu data pendaftaran di atas.\n\nKetik "konfirmasi" untuk menyelesaikan pendaftaran, atau ketik "batal" jika ingin mengulang.',
+          },
+        ]);
       }
 
       return { status: 'sent_registration_confirmation_flex', lineUserId, photoUrl: uploadResult.url, publicId };
@@ -296,78 +429,270 @@ export async function handleLineWebhookEvent(event: any) {
   const lowerText = rawText.toLowerCase();
 
   // ==========================================
-  // A. SELF-REGISTRATION COMMAND (?registrasi or /registrasi or #registrasi)
+  // CANCEL REGISTRATION / ACTION
   // ==========================================
   if (
-    lowerText.includes('registrasi') &&
-    !lowerText.includes('registrasi_akun') &&
-    (rawText.startsWith('?') || rawText.startsWith('/') || rawText.startsWith('#') || lowerText.startsWith('registrasi'))
+    lowerText === 'batal' ||
+    lowerText === '?batal' ||
+    lowerText === '#batal' ||
+    lowerText === '/batal' ||
+    lowerText === 'batal_reg' ||
+    lowerText === '?batal_reg' ||
+    lowerText === '/batal_reg' ||
+    lowerText === '#batal_reg'
   ) {
-    // 1. Prevent Double Registration: check if this LINE User ID is already verified
-    if (existingMember && existingMember.line_verification_status === 'verified') {
-      return await sendReply(
-        `Halo ${existingMember.full_name}! 👋✨\n\nAkun LINE kamu sudah terdaftar dan aktif di sistem database MP Community.\n\n💡 Ingin melihat atau mengubah data?\n• Ketik "profil" untuk melihat kartu profilmu\n• Ketik "ubah biodata" untuk memperbarui data diri\n• Ketik "ganti foto" untuk mengunggah foto profil baru (Full HD)\n\nTerima kasih banyak! 😊🙏`
-      );
+    if (pendingMemberRegistrations.has(lineUserId)) {
+      pendingMemberRegistrations.delete(lineUserId);
+      return await sendReply('❌ Pendaftaran dibatalkan. Kamu dapat memulai kembali kapan saja dengan mengetik "registrasi".');
     }
-
-    // 2. Parse text fields
-    const parsed = parseRegistrationText(rawText);
-    if (!parsed) {
-      const formatGuide = `⚠️ FORMAT REGISTRASI TIDAK LENGKAP\n\nSilakan salin dan lengkapi format pendaftaran berikut:\n\n?registrasi\nNama Lengkap : [Nama Lengkap Anda]\nNama Baptis : [Nama Baptis atau -]\nIDLine : [ID LINE Anda]\nInstagram : [Akun IG]\nKelas : [Asal Kelas]\nTahun Masuk : [Tahun Masuk / Angkatan]\nTanggal lahir : [Contoh: 05 November 2004]\nNomor Whatsapp : [08123456789]`;
-      return await sendReply(formatGuide);
-    }
-
-    // 3. Whitelist Pre-approved Verification: Check if candidate was pre-entered by admin
-    const inputNameClean = parsed.fullName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const inputClassClean = (parsed.classOrigin || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    const matchedCandidate = allMembers.find((m) => {
-      // Must not be already claimed by another LINE user
-      if (m.line_verification_status === 'verified') return false;
-
-      const mNameClean = (m.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const mNickClean = (m.nickname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const mClassClean = (m.class_origin || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-      // Name must match (either full name includes or is included)
-      const nameMatch =
-        mNameClean.length >= 3 &&
-        (mNameClean.includes(inputNameClean) ||
-          inputNameClean.includes(mNameClean) ||
-          (mNickClean.length >= 3 && inputNameClean.includes(mNickClean)));
-
-      // Class match if specified in pre-approved record
-      const classMatch =
-        !mClassClean ||
-        !inputClassClean ||
-        mClassClean.includes(inputClassClean) ||
-        inputClassClean.includes(mClassClean);
-
-      return nameMatch && classMatch;
-    });
-
-    if (!matchedCandidate) {
-      return await sendReply(
-        `Halo ${parsed.fullName}! Maaf ya, nama atau asal kelas kamu (${parsed.classOrigin || '-'}) belum terdaftar dalam daftar calon anggota yang diizinkan untuk registrasi di MP Community.\n\nPastikan penulisan nama dan asal kelasmu sesuai dengan yang telah dicatat pengurus ya. Jika kamu adalah anggota baru, silakan hubungi pengurus atau Superadmin terlebih dahulu agar datamu dimasukkan ke daftar anggota yang berhak registrasi. Semangat dan Tuhan memberkati! 🙏✨`
-      );
-    }
-
-    // Store in pending registration
-    pendingMemberRegistrations.set(lineUserId, {
-      ...parsed,
-      matchedMemberId: matchedCandidate.id,
-      lineUserId,
-      step: 'awaiting_photo',
-      expiresAt: Date.now() + 1800000, // 30 minutes
-    });
-
-    const reply = `📋 DATA PENDAFTARAN DICATAT!\n\nHalo ${matchedCandidate.full_name}! Data kamu berhasil dicocokkan dengan daftar calon anggota MP Community (${matchedCandidate.class_origin || parsed.classOrigin || 'Komunitas'}).\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto/foto formal) di obrolan ini.\n\n✨ TIPS PENTING AGAR FOTO TIDAK BLUR / PECAH:\nSaat memilih foto di galeri LINE, tekan/centang tombol "ORIGINAL" (atau "ASLI") di pojok kiri bawah layar sebelum menekan tombol Kirim. Foto akan tersimpan dalam kualitas Full HD tanpa kompresi otomatis LINE.`;
-    return await sendReply(reply);
   }
 
   // ==========================================
-  // B. CONFIRMATION / CANCELLATION OF REGISTRATION
+  // STEP-BY-STEP CONVERSATIONAL REGISTRATION WIZARD
   // ==========================================
+  const ongoingReg = pendingMemberRegistrations.get(lineUserId);
+  if (ongoingReg && ongoingReg.expiresAt > Date.now()) {
+    ongoingReg.expiresAt = Date.now() + 1800000;
+
+    // STEP 1: Awaiting Full Name
+    if (ongoingReg.step === 'awaiting_name') {
+      const inputNameClean = rawText.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (inputNameClean.length < 3) {
+        return await sendReply('⚠️ Nama terlalu pendek. Silakan ketik nama lengkap Anda (minimal 3 karakter):');
+      }
+
+      const matchedCandidate = allMembers.find((m) => {
+        if (m.line_verification_status === 'verified') return false;
+        const mNameClean = (m.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mNickClean = (m.nickname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return (
+          mNameClean.length >= 3 &&
+          (mNameClean.includes(inputNameClean) ||
+            inputNameClean.includes(mNameClean) ||
+            (mNickClean.length >= 3 && inputNameClean.includes(mNickClean)))
+        );
+      });
+
+      if (!matchedCandidate) {
+        return await sendReply(
+          `Halo ${rawText}! 👋\n\nMaaf ya, nama kamu belum terdaftar dalam daftar calon anggota yang diizinkan untuk registrasi di MP Community.\n\nPastikan penulisan nama lengkapmu sesuai dengan yang telah dicatat pengurus ya. Jika kamu adalah anggota baru, silakan hubungi pengurus atau Superadmin terlebih dahulu agar namamu dimasukkan ke daftar whitelist.\n\n(Ketik ulang namamu jika ada kesalahan eja, atau ketik "batal" untuk membatalkan)`
+        );
+      }
+
+      ongoingReg.fullName = matchedCandidate.full_name || rawText;
+      ongoingReg.matchedMemberId = matchedCandidate.id;
+      if (matchedCandidate.class_origin) {
+        ongoingReg.classOrigin = matchedCandidate.class_origin;
+      }
+      ongoingReg.step = 'awaiting_baptismal';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Halo ${matchedCandidate.full_name}! 👋✨\nData kamu berhasil dicocokkan dengan daftar calon anggota MP Community.\n\nLangkah selanjutnya:\nApa NAMA BAPTIS kamu?\n(Ketik "-" jika belum atau tidak ada)`
+      );
+    }
+
+    // STEP 2: Awaiting Baptismal Name
+    if (ongoingReg.step === 'awaiting_baptismal') {
+      ongoingReg.baptismalName = rawText === '-' ? undefined : rawText;
+      ongoingReg.step = 'awaiting_line_id';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Tercatat! 📋\n\nSelanjutnya, apa ID LINE kamu?\n(Ketik "-" jika tidak ada ID khusus)`
+      );
+    }
+
+    // STEP 3: Awaiting LINE ID
+    if (ongoingReg.step === 'awaiting_line_id') {
+      ongoingReg.lineId = rawText === '-' ? undefined : rawText.replace(/^@/, '');
+      ongoingReg.step = 'awaiting_instagram';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Sip! 👍\n\nSelanjutnya, apa username / akun INSTAGRAM kamu?\n(Ketik "-" jika tidak ada)`
+      );
+    }
+
+    // STEP 4: Awaiting Instagram
+    if (ongoingReg.step === 'awaiting_instagram') {
+      ongoingReg.instagram = rawText === '-' ? undefined : rawText.replace(/^@/, '');
+      ongoingReg.step = 'awaiting_class';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      const classHint = ongoingReg.classOrigin
+        ? `\n(Data dari pengurus: "${ongoingReg.classOrigin}" — ketik "ya" untuk memakai kelas ini, atau ketik nama kelas lain)`
+        : '\n(Contoh: PPTI 23 atau PPA 10)';
+
+      return await sendReply(
+        `Mantap! 🌟\n\nDari KELAS / ASAL divisi apa kamu?${classHint}`
+      );
+    }
+
+    // STEP 5: Awaiting Class Origin
+    if (ongoingReg.step === 'awaiting_class') {
+      if (lowerText === 'ya' && ongoingReg.classOrigin) {
+        // Keep pre-filled class
+      } else {
+        ongoingReg.classOrigin = rawText;
+      }
+      ongoingReg.step = 'awaiting_entry_year';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Tercatat (${ongoingReg.classOrigin})! 🏫\n\nTahun berapa TAHUN MASUK / ANGKATAN kamu?\n(Contoh: 2026)`
+      );
+    }
+
+    // STEP 6: Awaiting Entry Year
+    if (ongoingReg.step === 'awaiting_entry_year') {
+      const yearMatch = rawText.match(/\b(19\d{2}|20\d{2})\b/);
+      ongoingReg.entryYear = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+      ongoingReg.step = 'awaiting_birth_date';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Oke! 📅\n\nKapan TANGGAL LAHIR kamu? (Penting untuk ucapan ulang tahun komunitas!)\nFormat: Tanggal Bulan Tahun\n(Contoh: 1 Januari 2006 atau 05-11-2004)`
+      );
+    }
+
+    // STEP 7: Awaiting Birth Date
+    if (ongoingReg.step === 'awaiting_birth_date') {
+      const { day, month, year } = parseBirthDateInput(rawText);
+      ongoingReg.birthDate = day;
+      ongoingReg.birthMonth = month;
+      ongoingReg.birthYear = year;
+      ongoingReg.step = 'awaiting_whatsapp';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Tercatat (${day}/${month}${year ? `/${year}` : ''})! 🎂\n\nTerakhir untuk data teks, berapa NOMOR WHATSAPP kamu yang aktif?\n(Contoh: 08123456789)`
+      );
+    }
+
+    // STEP 8: Awaiting WhatsApp
+    if (ongoingReg.step === 'awaiting_whatsapp') {
+      ongoingReg.whatsapp = rawText;
+      ongoingReg.step = 'awaiting_photo';
+      pendingMemberRegistrations.set(lineUserId, ongoingReg);
+
+      return await sendReply(
+        `Terima kasih! Seluruh data diri kamu sudah tercatat lengkap. 📋✨\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto / foto formal) di obrolan ini.\n\n✨ TIPS PENTING AGAR FOTO TIDAK BLUR / PECAH:\nSaat memilih foto di galeri LINE, tekan/centang tombol "ORIGINAL" (atau "ASLI") di pojok kiri bawah layar sebelum menekan tombol Kirim. Foto akan otomatis tersimpan dalam kualitas Full HD di Cloudinary!`
+      );
+    }
+
+    // STEP 9: Awaiting Photo
+    if (ongoingReg.step === 'awaiting_photo') {
+      return await sendReply(
+        '📸 Silakan kirimkan 1 FOTO DIRI Anda di obrolan ini untuk melengkapi pendaftaran.\n\n(Pastikan mencentang tombol "ORIGINAL" di galeri LINE sebelum kirim agar foto tersimpan Full HD tanpa blur).'
+      );
+    }
+
+    // STEP 10: Awaiting Confirmation
+    if (ongoingReg.step === 'awaiting_confirmation') {
+      if (
+        lowerText === 'konfirmasi' ||
+        lowerText === 'ya' ||
+        lowerText === 'setuju' ||
+        lowerText === '/konfirmasi_reg' ||
+        lowerText === '?konfirmasi_reg' ||
+        lowerText === '#konfirmasi_reg' ||
+        lowerText === 'konfirmasi_reg'
+      ) {
+        return await finalizeRegistration(ongoingReg, lineUserId, sendReply);
+      } else {
+        return await sendReply(
+          'Silakan ketik "konfirmasi" untuk menyelesaikan pendaftaran, atau ketik "batal" untuk membatalkan.'
+        );
+      }
+    }
+  }
+
+  // ==========================================
+  // INITIATE REGISTRATION ("registrasi" or one-shot paste)
+  // ==========================================
+  if (
+    lowerText === 'registrasi' ||
+    lowerText === '?registrasi' ||
+    lowerText === '#registrasi' ||
+    lowerText === '/registrasi' ||
+    lowerText.startsWith('registrasi') ||
+    lowerText.startsWith('?registrasi') ||
+    lowerText.startsWith('#registrasi') ||
+    lowerText.startsWith('/registrasi')
+  ) {
+    if (!lowerText.includes('registrasi_akun')) {
+      // 1. Prevent Double Registration: check if this LINE User ID is already verified
+      if (existingMember && existingMember.line_verification_status === 'verified') {
+        return await sendReply(
+          `Halo ${existingMember.full_name}! 👋✨\n\nAkun LINE kamu sudah terdaftar dan aktif di sistem database MP Community.\n\n💡 Ingin melihat atau mengubah data?\n• Ketik "profil" untuk melihat kartu profilmu\n• Ketik "ubah biodata" untuk memperbarui data diri\n• Ketik "ganti foto" untuk mengunggah foto profil baru (Full HD)\n\nTerima kasih banyak! 😊🙏`
+        );
+      }
+
+      // 2. Check if user pasted the entire multi-line template at once
+      if (
+        rawText.includes(':') &&
+        (lowerText.includes('nama lengkap') || lowerText.includes('nama'))
+      ) {
+        const parsed = parseRegistrationText(rawText);
+        if (parsed) {
+          const inputNameClean = parsed.fullName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const inputClassClean = (parsed.classOrigin || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+          const matchedCandidate = allMembers.find((m) => {
+            if (m.line_verification_status === 'verified') return false;
+            const mNameClean = (m.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const mNickClean = (m.nickname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const mClassClean = (m.class_origin || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            const nameMatch =
+              mNameClean.length >= 3 &&
+              (mNameClean.includes(inputNameClean) ||
+                inputNameClean.includes(mNameClean) ||
+                (mNickClean.length >= 3 && inputNameClean.includes(mNickClean)));
+
+            const classMatch =
+              !mClassClean ||
+              !inputClassClean ||
+              mClassClean.includes(inputClassClean) ||
+              inputClassClean.includes(mClassClean);
+
+            return nameMatch && classMatch;
+          });
+
+          if (!matchedCandidate) {
+            return await sendReply(
+              `Halo ${parsed.fullName}! Maaf ya, nama atau asal kelas kamu (${parsed.classOrigin || '-'}) belum terdaftar dalam daftar calon anggota yang diizinkan untuk registrasi di MP Community.\n\nPastikan penulisan nama dan asal kelasmu sesuai dengan yang telah dicatat pengurus ya. Jika kamu adalah anggota baru, silakan hubungi pengurus atau Superadmin terlebih dahulu agar datamu dimasukkan ke daftar whitelist. Semangat dan Tuhan memberkati! 🙏✨`
+            );
+          }
+
+          pendingMemberRegistrations.set(lineUserId, {
+            ...parsed,
+            matchedMemberId: matchedCandidate.id,
+            lineUserId,
+            step: 'awaiting_photo',
+            expiresAt: Date.now() + 1800000,
+          });
+
+          const reply = `📋 DATA PENDAFTARAN DICATAT!\n\nHalo ${matchedCandidate.full_name}! Data kamu berhasil dicocokkan dengan daftar calon anggota MP Community (${matchedCandidate.class_origin || parsed.classOrigin || 'Komunitas'}).\n\n📸 LANGKAH TERAKHIR:\nSilakan kirimkan 1 FOTO DIRI ANDA (pasfoto/foto formal) di obrolan ini.\n\n✨ TIPS PENTING AGAR FOTO TIDAK BLUR / PECAH:\nSaat memilih foto di galeri LINE, tekan/centang tombol "ORIGINAL" (atau "ASLI") di pojok kiri bawah layar sebelum menekan tombol Kirim. Foto akan tersimpan dalam kualitas Full HD tanpa kompresi otomatis LINE.`;
+          return await sendReply(reply);
+        }
+      }
+
+      // 3. Conversational step-by-step entry
+      pendingMemberRegistrations.set(lineUserId, {
+        lineUserId,
+        step: 'awaiting_name',
+        expiresAt: Date.now() + 1800000,
+      });
+
+      return await sendReply(
+        `Halo! Selamat datang di pendaftaran anggota MP Community! ✝️✨\n\nSenang sekali kamu ingin bergabung bersama kami. Kami akan mencatat data dirimu secara bertahap.\n\nUntuk memulai, silakan ketik NAMA LENGKAP kamu (sesuai data yang didaftarkan ke pengurus):\n\n(Ketik "batal" kapan saja untuk membatalkan)`
+      );
+    }
+  }
+
+  // Handle direct confirmation if user clicks confirmation button from Flex Card
   if (
     lowerText === '/konfirmasi_reg' ||
     lowerText === '?konfirmasi_reg' ||
@@ -377,62 +702,10 @@ export async function handleLineWebhookEvent(event: any) {
     const pending = pendingMemberRegistrations.get(lineUserId);
     if (!pending || !pending.photoUrl) {
       return await sendReply(
-        '⚠️ Tidak ada data pendaftaran yang siap dikonfirmasi atau Anda belum mengunggah foto. Silakan ketik ?registrasi untuk memulai pendaftaran baru.'
+        '⚠️ Tidak ada data pendaftaran yang siap dikonfirmasi atau Anda belum mengunggah foto. Silakan ketik "registrasi" untuk memulai pendaftaran baru.'
       );
     }
-
-    let memberId = pending.matchedMemberId;
-    if (memberId) {
-      // Update existing pre-approved member record
-      await updateMember(memberId, {
-        full_name: pending.fullName,
-        baptismal_name: pending.baptismalName,
-        line_id: pending.lineId,
-        line_user_id: lineUserId,
-        instagram_account: pending.instagram,
-        class_origin: pending.classOrigin,
-        entry_year: pending.entryYear,
-        birth_date: pending.birthDate,
-        birth_month: pending.birthMonth,
-        birth_year: pending.birthYear,
-        whatsapp_number: pending.whatsapp,
-        photo_url: pending.photoUrl,
-        community_role: 'anggota_aktif',
-        status: 'active',
-        line_verification_status: 'verified',
-      });
-    } else {
-      const created = await createMember({
-        full_name: pending.fullName,
-        baptismal_name: pending.baptismalName,
-        line_id: pending.lineId,
-        line_user_id: lineUserId,
-        instagram_account: pending.instagram,
-        class_origin: pending.classOrigin,
-        entry_year: pending.entryYear,
-        birth_date: pending.birthDate,
-        birth_month: pending.birthMonth,
-        birth_year: pending.birthYear,
-        whatsapp_number: pending.whatsapp,
-        photo_url: pending.photoUrl,
-        community_role: 'anggota_aktif',
-        status: 'active',
-        line_verification_status: 'verified',
-      });
-      memberId = created.id;
-    }
-
-    pendingMemberRegistrations.delete(lineUserId);
-
-    const settings = await getAutomationSettings();
-    const allGroups = await getLineGroups();
-    const defaultGroup = allGroups.find((g) => g.is_active);
-    const groupLink =
-      (settings as any).group_invite_link ||
-      'https://line.me/R/ti/g/Lptzr-3e_p';
-
-    const welcomeMsg = `🎉 SELAMAT BERGABUNG DI MP COMMUNITY! ✝️\n\nHalo ${pending.fullName}!\nData pendaftaran Anda telah resmi terverifikasi dan tersimpan dalam sistem database MP Community.\n\nFoto Anda telah tersimpan aman di Cloudinary (Full HD).\n\n👥 TAUTAN GRUP LINE:\nSilakan klik tautan di bawah ini untuk langsung bergabung ke Grup LINE Komunitas MP:\n👉 ${groupLink}\n\nSampai jumpa di kegiatan komunitas dan Tuhan memberkati! 🙏✨`;
-    return await sendReply(welcomeMsg);
+    return await finalizeRegistration(pending, lineUserId, sendReply);
   }
 
   if (
